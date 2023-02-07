@@ -1,4 +1,4 @@
-import { Service, ID, Address, Sender, Interval, Caller } from "@tenderkite/core"
+import { Service, ID, Address, Sender, Interval, Caller } from "@tenderkite/core/decorators"
 
 @Service("player")
 export class Player {

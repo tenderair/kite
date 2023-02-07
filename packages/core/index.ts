@@ -13,4 +13,4 @@ export function create_app(options: AppOptions): MasterApplication | WorkerAppli
     return new WorkerApplication(options);
 }
 
-export * from "./decorators"
+// export * from "./decorators"
