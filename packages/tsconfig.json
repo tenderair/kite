@@ -1,0 +1,25 @@
+{
+    "compilerOptions": {
+        "incremental": true,
+        "module": "commonjs",
+        "target": "es2019",
+        "lib": [
+            "es2019"
+        ],
+        "outDir": "./dist",
+        "strict": true,
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "types": [
+            "node"
+        ],
+        "sourceMap": true,
+        "inlineSources": true,
+        "removeComments": false,
+        "esModuleInterop": true
+    },
+    "exclude": [
+        "node_modules",
+        "dist"
+    ],
+}

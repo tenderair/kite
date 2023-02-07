@@ -1,12 +1,21 @@
 {
+  "private": true,
   "name": "@tenderkite/monorepo",
   "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "tsc -b -w -i"
   },
   "keywords": [],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.11.19",
+    "ts-node": "^10.9.1"
+  },
+  "workspaces": [
+    "packages/*",
+    "samples/*"
+  ]
 }

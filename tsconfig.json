@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    // leave as-is
+  },
+  "references": [
+    {
+      "path": "./packages/core",
+    },
+    {
+      "path": "./packages/testing",
+    }
+  ],
+  "files": []
+}

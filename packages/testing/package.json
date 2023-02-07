@@ -1,0 +1,22 @@
+{
+  "name": "@tenderkite/testing",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tenderair/tenderkite.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tenderair/tenderkite/issues"
+  },
+  "homepage": "https://github.com/tenderair/tenderkite#readme",
+  "dependencies": {
+    "@tenderkite/core": "file:../core"
+  }
+}

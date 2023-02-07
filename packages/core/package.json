@@ -1,0 +1,16 @@
+{
+  "name": "@tenderkite/core",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "compile": "tsc -b"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "reflect-metadata": "^0.1.13",
+    "yaml": "^2.2.1"
+  }
+}

@@ -1,0 +1,17 @@
+threads: 2
+services:
+  - name: player
+    id: 1
+    options:
+      url: mongodb://....
+  - name: player
+    id: 2
+    options:
+      url: mongodb://....
+  # - name: boot
+  #   depends_on: db
+controllers:
+  []
+  # - name: gate
+  #   driver:
+  #     port: 10086
