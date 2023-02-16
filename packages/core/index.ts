@@ -5,7 +5,7 @@ import { AppOptions } from "./types/AppOptions";
 import { MasterApplication } from "./app/MasterApplication";
 import { WorkerApplication } from "./app/WorkerApplication";
 
-export function create_app(options: AppOptions): MasterApplication | WorkerApplication {
+export function createApp(options: AppOptions): MasterApplication | WorkerApplication {
     if (isMainThread) {
         return new MasterApplication(options);
     }
@@ -13,4 +13,4 @@ export function create_app(options: AppOptions): MasterApplication | WorkerAppli
     return new WorkerApplication(options);
 }
 
-// export * from "./decorators"
+export * from "./decorators"

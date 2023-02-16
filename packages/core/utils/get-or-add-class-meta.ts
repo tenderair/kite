@@ -13,7 +13,12 @@ export function get_or_add_class_meta(target: Object): ClassMeta {
         methods: {},
         properties: {},
         tags: [],
-        self: { parameters: [], tags: [] }
+        self: {
+            name: "constructor",
+            parameters: [],
+            tags: [],
+            results: [],
+        }
     } as ClassMeta;
 
     (Reflect as any).defineMetadata("class", existed, target);

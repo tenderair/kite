@@ -8,4 +8,10 @@
         "node_modules",
         "dist"
     ],
+    "assets": [
+        {
+            "include": "*.yaml",
+            "outDir": "./dist"
+        }
+    ]
 }

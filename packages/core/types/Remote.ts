@@ -1,4 +1,4 @@
-export type Target = { name: string, id?: string | number, address?: number }
+export type Target = { name?: string, id?: string | number, address?: number }
 export type Sender = (target: Target, method: string, args: any[]) => any
 
 interface RemoteDescriptor {
@@ -6,7 +6,6 @@ interface RemoteDescriptor {
     send: Sender,
 }
 
-const target_cache = new WeakMap<Sender, any>()
 
 /**
  * remote.player(10).ping().send()
@@ -14,13 +13,36 @@ const target_cache = new WeakMap<Sender, any>()
  * @returns 
  */
 export function make_remote(send: Sender) {
-    return function (name: string, id?: string | number) {
 
-        let remote = {
-            target: { name, id },
-            send: send,
+    const caches = new Map<String, any>()
+
+    return function (name: string | number, id?: string | number) {
+
+        let key = `${name}(${id ? id : ''})`
+        let existed = caches.get(key)
+        if (existed) {
+            return existed
         }
-        return make_target(remote)
+
+        let address: number = 0
+        let real_name: any = name
+
+        if (typeof name == "number") {
+            address = name
+            real_name = undefined
+        }
+
+
+        let remote: RemoteDescriptor = {
+            target: { address: address as number, name: real_name, id },
+            send: send
+        }
+
+        existed = make_target(remote)
+
+        caches.set(key, existed)
+
+        return existed
     }
 }
 

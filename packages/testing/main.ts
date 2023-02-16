@@ -1,5 +1,5 @@
-import { create_app } from "@tenderkite/core"
-import { Player } from "./Player"
+import { createApp } from "@tenderair/kite.core"
+import { Player, Gateway } from "./Player"
 
 // const easyMonitor = require('easy-monitor')
 
@@ -14,9 +14,9 @@ process.on('unhandledRejection', (reason, promise) => {
     // 应用程序特定的日志记录，在此处抛出错误或其他逻辑
 });
 
-let app = create_app({
+let app = createApp({
     services: [Player],
-    controllers: [],
+    controllers: [Gateway],
 })
 
 app.start().catch((event) => {

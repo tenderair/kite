@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { readFileSync } from 'fs';
 import { AppOptions } from "../types/AppOptions";
-import { Service } from "../types/Service";
+import { Kite } from "../types/Kite";
 import { parse } from 'yaml';
 import { ClassMeta } from "../types/Meta";
 import { Target } from "../types/Remote";
@@ -10,7 +10,7 @@ import { Target } from "../types/Remote";
 export class BaseApplication extends EventEmitter {
 
     protected name_descriptors = new Map<string, Function>();
-    protected address_services: Map<Number, Service> = new Map<Number, Service>();
+    protected kites: Map<Number, Kite> = new Map<Number, Kite>();
     protected config: any;
     protected session = 0
     protected rpcs: { [key: number]: any } = {}

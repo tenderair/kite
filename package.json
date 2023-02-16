@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "@tenderkite/monorepo",
+  "name": "@tenderair/kite",
   "version": "0.0.1",
   "description": "",
   "main": "index.js",
@@ -15,7 +15,6 @@
     "ts-node": "^10.9.1"
   },
   "workspaces": [
-    "packages/*",
-    "samples/*"
+    "packages/*"
   ]
 }

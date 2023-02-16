@@ -1,10 +1,10 @@
 {
-  "name": "@tenderkite/testing",
+  "name": "@tenderair/kite.testing",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node -r ts-node/register main.ts"
   },
   "repository": {
     "type": "git",
@@ -17,6 +17,6 @@
   },
   "homepage": "https://github.com/tenderair/tenderkite#readme",
   "dependencies": {
-    "@tenderkite/core": "file:../core"
+    "@tenderair/kite.core": "file:../core"
   }
 }

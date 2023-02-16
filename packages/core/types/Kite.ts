@@ -2,7 +2,7 @@ import EventEmitter = require("events")
 import { Constructable } from "./Constructable"
 import { ClassMeta } from "./Meta"
 
-export class Service extends EventEmitter {
+export class Kite extends EventEmitter {
 
     address: number = 0;
     name: string = "";
@@ -15,7 +15,7 @@ export class Service extends EventEmitter {
 
     timers: any = {};
 
-    [key: string]: any
+    [key: string]: any;
 
     constructor() {
         super()

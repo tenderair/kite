@@ -128,7 +128,7 @@ export class MasterApplication extends BaseApplication {
     }
 
     async bootControllers() {
-        for (const controller of this.config.controllers) {
+        for (const controller of this.config.controllers || []) {
             const descriptor = this.name_descriptors.get(controller.name);
             if (descriptor == null) {
                 throw new Error(`no such controller:${controller.name}`);
