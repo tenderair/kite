@@ -4,32 +4,46 @@ import {
     WSController,
     OnConnection,
     OnDisconnect,
-    Message, MessageBody
+    Message, MessageBody, Component, Input
 } from "@tenderair/kite.core"
 
-@Service("player")
-export class Player {
-    constructor(
-        @Address() private address: number,
-        @ID() private id: number,
-        @Sender() private sender: Function,
-        @Caller() private caller: Function
-    ) {
+import { Server } from "socket.io";
 
-        // console.log(`player(${id}) in ${address >> 24}`)
-    }
-
-    onStart() {
-        console.log("this is on start")
-    }
-
-    ping(@Address() address: number, a: number, b: number, c: number) {
+@Component({ name: "chat" })
+export class Chat {
+    ping(a: number, b: number, c: number) {
         console.log("!!recv ping", a, b, c)
     }
 
     add(a: number, b: number) {
-        console.log("get add", a, b, "in", this.id)
+        console.log("get add", a, b, "in")
         return a + b
+    }
+}
+
+@Component({
+    template: () => {
+        return [
+            ["chat", {
+                props: {},
+                on: {},
+                ref: "chat"
+            }]
+        ]
+    }
+})
+@Service("player")
+export class Player {
+
+    @Address() address!: number;
+    @ID() id!: number;
+    @Sender() sender!: Function;
+    @Caller() caller!: Function
+
+    chat!: Chat;
+
+    onStart() {
+        console.log("this is on start", this.address, this.id)
     }
 
     @Interval("show_debug", 2000)
@@ -62,7 +76,6 @@ Controller 中间件，会对单个 namespace 下的 connection 和 message 生�
 Connection 中间件，会对单个 namespace 下的 connection 生消息
 Message 中间件，会对单个 namespace 下的 message 生效
  */
-
 @WSController("gate", 80)
 export class Gateway {
 
@@ -76,7 +89,6 @@ export class Gateway {
         console.log("on disconnect")
     }
 
-    // @WithAck()
     @Message("login")
     login(@MessageBody() data: object) {
         console.log("recv login", data)

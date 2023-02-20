@@ -4,8 +4,6 @@ import { AppOptions } from "../types/AppOptions";
 import { Kite } from "../types/Kite";
 import { parse } from 'yaml';
 import { ClassMeta } from "../types/Meta";
-import { Target } from "../types/Remote";
-
 
 export class BaseApplication extends EventEmitter {
 

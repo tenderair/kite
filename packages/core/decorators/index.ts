@@ -16,3 +16,8 @@ export * from "./OnConnection"
 export * from "./OnDisconnect"
 export * from "./MessageBody"
 
+export * from "./Component"
+export * from "./Input"
+export * from "./Output"
+
+

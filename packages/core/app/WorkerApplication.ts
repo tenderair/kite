@@ -1,13 +1,16 @@
-import { AppOptions } from "../types/AppOptions";
-import { BaseApplication } from "./BaseApplication";
 import { MessagePort, parentPort, workerData } from 'worker_threads';
+import { Server } from 'socket.io';
+
+import { BaseApplication } from "./BaseApplication";
+import { AppOptions } from "../types/AppOptions";
+
 import { Kite } from "../types/Kite";
 import { Constructable } from "../types/Constructable";
-import { ClassMeta, MetaTag, MethodMeta, ParameterMeta } from "../types/Meta";
-import { make_remote as makeRemote, Target } from "../types/Remote";
+import { ClassMeta, MethodMeta, ParameterMeta, PropertyMeta } from "../types/Meta";
+import { makeRemote, Target } from "../types/Remote";
 import { Message } from "../types/Message";
-import { Server } from 'socket.io';
 import { hash } from "../utils/hash";
+import { ComponentOptions } from "../decorators";
 
 type IDKites = Map<number | string, Kite>;
 
@@ -18,7 +21,7 @@ interface IndexMessagePort extends MessagePort {
 export class WorkerApplication extends BaseApplication {
 
     index = workerData.index as number
-    id_helper = workerData.index << 24
+    address_helper = workerData.index << 24
 
     workers: { [key: number]: IndexMessagePort } = {};
     //按名字划分
@@ -27,6 +30,11 @@ export class WorkerApplication extends BaseApplication {
 
     constructor(options: AppOptions) {
         super(options);
+
+        for (const descriptor of options.components) {
+            const meta = (Reflect as any).getMetadata("class", descriptor) as ClassMeta;
+            this.name_descriptors.set(meta.name || descriptor.name.toLowerCase(), descriptor);
+        }
     }
 
     startWorkers() {
@@ -119,36 +127,37 @@ export class WorkerApplication extends BaseApplication {
 
     onCreate(from: MessagePort, { target, options }: { target: Target, options: any }): number {
 
-        const kite = this.createKite(target, options)
+        const kite = this.createRootKite(target, options, {
+            ...target,
+            address: ++this.address_helper,
+        })
 
-        this.createKiteValue(kite)
-        this.startKite(kite)
+        setImmediate(() => {
+            this.startKite(kite)
+        })
 
         return kite.address
     }
 
     async onCreateSync(from: MessagePort, { target, options }: { target: Target, options: any }): Promise<number> {
 
-        const kite = this.createKite(target, options)
-
-        this.createKiteValue(kite)
-        this.startKite(kite)
-
-        return new Promise((resolve, reject) => {
-            kite.once("started", () => {
-                kite.off("error", reject)
-                resolve(kite.address)
-            })
-            kite.once("error", reject)
+        const kite = this.createRootKite(target, options, {
+            ...target,
+            address: ++this.address_helper,
         })
+
+        await this.startKite(kite)
+
+        return kite.address
     }
 
     async onCreateController(from: MessagePort, { target, options, driver }: { target: Target, options: any, driver: any }) {
 
         const kite = this.createController(target, options, driver)
 
-        this.createKiteValue(kite)
-        this.startKite(kite)
+        setImmediate(() => {
+            this.startKite(kite)
+        })
 
         return kite.address
     }
@@ -163,28 +172,48 @@ export class WorkerApplication extends BaseApplication {
     async onDo(from: MessagePort, source: number, { target, method, args }: { target: Target, method: string, args: any[] }) {
 
         let kite = this.find(target)
-
         if (kite == null) {
             throw new Error(`no such ${target.name}(${target.id ? target.id : ''})`)
         }
 
-        let meta = kite.meta as ClassMeta
-        let instance = kite.value
+        const current = this.findMethod(kite, method)
+        if (current == null) {
+            throw new Error(`no such method ${target.name}(${target.id ? target.id : ''}).${method}()`)
+        }
+
+        let meta = current.meta
+        let instance = current.value
 
         let result = null
 
-        let method_meta = meta?.methods[method]
+        let method_meta = meta.methods[method]
         if (method_meta) {
-            result = await this.resolveMethod(kite, method_meta, args)
-            this.resolveResult(kite, method_meta, result)
+            result = await this.resolveMethod(current, method_meta, args)
+            this.resolveResult(current, method_meta, result)
         }
         else {
             result = await instance[method](...args)
         }
 
-        // console.log("got result for", method, result)
-
         return result
+    }
+
+    findMethod(parent: Kite, method: string): Kite | undefined {
+        if (parent.value[method]) {
+            return parent;
+        }
+        for (const current of parent.children) {
+            let instance = current.value;
+
+            if (instance[method]) {
+                return current;
+            }
+
+            let result = this.findMethod(current, method);
+            if (result) {
+                return result;
+            }
+        }
     }
 
     onResp(from: MessagePort, session: number, { result, error }: { result?: any, error?: Error }) {
@@ -208,7 +237,77 @@ export class WorkerApplication extends BaseApplication {
         this.global_kites.set(name, address)
     }
 
-    async resolveMethod(kite: Kite, method_meta: MethodMeta, args: any[] = [], context?: any) {
+    async resolveProperties(kite: Kite, context?: any) {
+
+        const meta = kite.meta
+
+        for (const name in meta.properties) {
+            const property = meta.properties[name]
+            this.resolveProperty(kite, property, context)
+        }
+    }
+
+    async resolveProperty(kite: Kite, meta: PropertyMeta, context?: any) {
+
+        const name = meta.name
+        const value = kite.value
+
+        for (const tag of meta.tags) {
+            switch (tag.type) {
+                case "Address":
+                    value[name] = kite.root.address
+                    break
+                case "ID":
+                    value[name] = kite.root.id
+                    break
+                case "Sender":
+                    value[name] = makeRemote((target: Target, method: string, args: any[]) => {
+                        const message = {
+                            type: "do",
+                            source: kite.root.address,
+                            body: {
+                                target,
+                                method,
+                                args,
+                            }
+                        }
+                        const port = this.choose(target)
+                        port.postMessage(message)
+                    })
+                    break
+                case "Caller":
+                    value[name] = makeRemote((target: Target, method: string, args: any[]) => {
+                        const session = ++this.session
+                        const port = this.choose(target)
+
+                        const message = {
+                            type: "do",
+                            session,
+                            source: kite.root.address,
+                            body: {
+                                target,
+                                method,
+                                args,
+                            }
+                        }
+
+                        return new Promise((resolve, reject) => {
+
+                            port.postMessage(message)
+
+                            this.rpcs[session] = { resolve, reject }
+                        })
+                    })
+                    break
+                case "Server":
+                    value[name] = kite.root.server
+                    break
+            }
+        }
+
+    }
+
+    async resolveMethod(kite: Kite, method_meta: MethodMeta, args: any[] = [], context: any = {}) {
 
         const parameters = [];
 
@@ -222,7 +321,7 @@ export class WorkerApplication extends BaseApplication {
         return result
     }
 
-    resolveParameters(kite: Kite, method_meta: MethodMeta, context?: any) {
+    resolveParameters(kite: Kite, method_meta: MethodMeta, context: any) {
 
         const parameters = [];
 
@@ -234,7 +333,7 @@ export class WorkerApplication extends BaseApplication {
         return parameters
     }
 
-    resolveParameter(kite: Kite, parameter: ParameterMeta, context?: any) {
+    resolveParameter(kite: Kite, parameter: ParameterMeta, context: any) {
         switch (parameter.type) {
             case "Address":
                 return kite.address
@@ -250,47 +349,8 @@ export class WorkerApplication extends BaseApplication {
                         return kite.options
                     }
                 }
-            case "Sender":
-                return makeRemote((target: Target, method: string, args: any[]) => {
-                    const message = {
-                        type: "do",
-                        source: kite.address,
-                        body: {
-                            target,
-                            method,
-                            args,
-                        }
-                    }
-                    const port = this.choose(target)
-                    port.postMessage(message)
-                })
-            case "Caller":
-                return makeRemote((target: Target, method: string, args: any[]) => {
-                    const session = ++this.session
-                    const port = this.choose(target)
-
-                    const message = {
-                        type: "do",
-                        session,
-                        source: kite.address,
-                        body: {
-                            target,
-                            method,
-                            args,
-                        }
-                    }
-
-                    return new Promise((resolve, reject) => {
-
-                        port.postMessage(message)
-
-                        this.rpcs[session] = { resolve, reject }
-                    })
-                })
-            case "Server":
-                return kite.server
             case "Socket":
-                return context?.socket
+                return context.socket
             case "MessageBody":
                 {
                     let args = context?.args        //socket.io can emit with many parameters
@@ -341,23 +401,19 @@ export class WorkerApplication extends BaseApplication {
         }
     }
 
-    createKite(target: Target, options?: any): Kite {
+    /**
+     * 创建kite
+     * @param target 
+     * @param options 
+     * @returns 
+     */
+    createRootKite(target: Target, options: any, context: any): Kite {
 
-        const kite = new Kite()
+        const kite = this.createKite(target, options, context)
 
-        kite.name = target.name as string
-        kite.id = target.id
-        kite.address = ++this.id_helper
-        kite.options = options
-        kite.descriptor = this.name_descriptors.get(kite.name) as Constructable<unknown>
+        kite.root = kite
 
         console.log(`create ${kite.address}=${kite.name}(${kite.id ? kite.id : ''})`)
-
-        if (kite.descriptor == null) {
-            return kite
-        }
-
-        kite.meta = (Reflect as any).getMetadata("class", kite.descriptor) as ClassMeta;
 
         if (target.id == null)       //global
         {
@@ -386,19 +442,92 @@ export class WorkerApplication extends BaseApplication {
         return kite
     }
 
-    createKiteValue(kite: Kite) {
+    /**
+     * 创建kite
+     * @param target 
+     * @param options 
+     * @returns 
+     */
+    createKite(target: Target, options: any, context: any): Kite {
+
+        const kite = new Kite()
+
+        kite.root = context.root || kite
+        kite.name = target.name as string
+        kite.id = target.id
+        kite.address = context.address
+        kite.options = options
+        kite.server = context.server
+        kite.descriptor = this.name_descriptors.get(kite.name) as Constructable<unknown>
+
+        if (kite.descriptor == null) {
+            throw new Error(`no such kite:${kite.name}`)
+        }
+
+        kite.meta = (Reflect as any).getMetadata("class", kite.descriptor) as ClassMeta;
+
+        context.root = kite.root
+
+        this.createKiteValue(kite, context)
+        this.createKiteChildren(kite, context)
+
+        return kite
+    }
+
+    /**
+     * 创建kite对应的对象
+     * @param kite 
+     */
+    createKiteValue(kite: Kite, context: any) {
 
         const meta = kite.meta as ClassMeta
         const descriptor = kite.descriptor as Constructable<unknown>
 
-        const params = this.resolveParameters(kite, meta.self)
+        const params = this.resolveParameters(kite, meta.self, context)
 
         kite.value = new descriptor(...params)
+
+        this.resolveProperties(kite, context)       //Todo 这个位置不一定适合
+    }
+
+    createKiteChildren(kite: Kite, context: any) {
+
+        const meta = kite.meta
+        const component_tag = meta.tags.find((tag) => tag.type == "Component")
+
+        if (component_tag == null) {
+            return
+        }
+
+        const options = component_tag.value as ComponentOptions
+        const elements = options?.template?.call(kite)
+
+        if (elements == null) {
+            return
+        }
+
+        for (const element of elements) {
+            const name = element[0]
+            const { props, on, ref } = element[1]
+
+            const child = this.createKite({ name }, props, context)
+
+            if (ref) {
+                kite.value[ref] = child.value
+            }
+
+            kite.children.push(child)
+        }
     }
 
     createController(target: Target, options?: any, driver?: any): Kite {
 
-        const kite = this.createKite(target, options)
+        const context = {
+            ...target,
+            address: ++this.address_helper,
+            server: new Server(),
+        }
+        const kite = this.createRootKite(target, options, context)
 
         const meta = kite.meta as ClassMeta
 
@@ -406,10 +535,8 @@ export class WorkerApplication extends BaseApplication {
             throw new Error("no transport in " + target.name)
         }
 
-        const port = driver?.port || meta?.value || 8080
-        const server = kite.server = new Server() as Server
-
-        this.createKiteValue(kite)
+        const port = driver?.port || meta.value || 8080
+        const server = kite.server = context.server
 
         let onConnected: MethodMeta
         let onDisconnect: MethodMeta
@@ -460,12 +587,11 @@ export class WorkerApplication extends BaseApplication {
         return kite
     }
 
-    startKite(kite: Kite) {
+    async startKite(kite: Kite) {
 
-        let meta = kite.meta as ClassMeta
+        let meta = kite.meta
         let instance = kite.value
-
-        let timers: any = {}
+        let timers = kite.timers
 
         for (let name in meta.methods) {
             let method = meta.methods[name]
@@ -484,30 +610,25 @@ export class WorkerApplication extends BaseApplication {
             }
         }
 
-        kite.timers = timers
+        if (instance.onStart) {
+            await instance.onStart()
+            await this.startKiteChildren(kite)
+        }
 
-        setImmediate(async () => {
+        for (let name in timers) {
+            let timer = timers[name]
 
-            if (instance.onStart) {
-                await instance.onStart()
+            let onTimer = this.resolveMethod.bind(this, kite, timer.meta)
+
+            if (timer.repeat == null) {
+                timer.id = setTimeout(onTimer, timer.delay)
             }
-
-            for (let name in timers) {
-                let timer = timers[name]
-
-                let onTimer = this.resolveMethod.bind(this, kite, timer.meta)
-
-                if (timer.repeat == null) {
-                    timer.id = setTimeout(onTimer, timer.delay)
-                }
-                else {
-                    timer.id = setInterval(onTimer, timer.repeat)
-                }
+            else {
+                timer.id = setInterval(onTimer, timer.repeat)
             }
+        }
 
-            kite.emit("started")
-        })
-
+        kite.emit("started")
         kite.on("error", () => {
             for (let name in timers) {
                 let timer = timers[name]
@@ -522,6 +643,12 @@ export class WorkerApplication extends BaseApplication {
 
             kite.timers = timers = {}
         })
+    }
+
+    async startKiteChildren(kite: Kite) {
+        for (const child of kite.children) {
+            await this.startKite(child)
+        }
     }
 
     choose(target: Target) {

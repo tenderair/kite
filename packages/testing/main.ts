@@ -1,5 +1,5 @@
 import { createApp } from "@tenderair/kite.core"
-import { Player, Gateway } from "./Player"
+import { Player, Chat, Gateway } from "./Player"
 
 // const easyMonitor = require('easy-monitor')
 
@@ -17,6 +17,7 @@ process.on('unhandledRejection', (reason, promise) => {
 let app = createApp({
     services: [Player],
     controllers: [Gateway],
+    components: [Chat],
 })
 
 app.start().catch((event) => {

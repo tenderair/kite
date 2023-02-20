@@ -12,7 +12,7 @@ interface RemoteDescriptor {
  * @param service 
  * @returns 
  */
-export function make_remote(send: Sender) {
+export function makeRemote(send: Sender) {
 
     const caches = new Map<String, any>()
 

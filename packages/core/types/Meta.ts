@@ -15,12 +15,17 @@ export interface MethodMeta {
     results: MetaTag[];
 }
 
+export interface PropertyMeta {
+    tags: MetaTag[];
+    name: string | symbol;
+}
+
 export interface ClassMeta {
     name?: string,
     type?: string,
     value?: any,
     methods: { [key: string | symbol]: MethodMeta };
-    properties: { [key: string | symbol]: MetaTag[] };
+    properties: { [key: string | symbol]: PropertyMeta };
     tags: MetaTag[];
     self: MethodMeta,           //构造函数
 }
