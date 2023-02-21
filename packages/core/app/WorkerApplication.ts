@@ -77,6 +77,9 @@ export class WorkerApplication extends BaseApplication {
                 case "createController":
                     result = await this.onCreateController(from, body)
                     break
+                case "destroy":
+                    this.onDestroy(from, body)
+                    break
                 case "do":
                     result = await this.onDo(from, source, body)
                     break
@@ -160,6 +163,28 @@ export class WorkerApplication extends BaseApplication {
         })
 
         return kite.address
+    }
+
+    async onDestroy(from: MessagePort, { target }: { target: Target }) {
+
+        const kite = this.find(target)
+        if (kite == null) {
+            return
+        }
+
+        this.kites.delete(kite.address)
+
+        if (kite.id == null) {
+            this.global_kites.delete(kite.name)
+        }
+        else {
+            let names = this.local_kites.get(target.name as string)
+            if (names) {
+                names.delete(kite.id)
+            }
+        }
+
+        await this.stopKite(kite)
     }
 
     /**
@@ -253,12 +278,23 @@ export class WorkerApplication extends BaseApplication {
         const value = kite.value
 
         for (const tag of meta.tags) {
+            const tag_value = tag.value
             switch (tag.type) {
                 case "Address":
                     value[name] = kite.root.address
                     break
                 case "ID":
                     value[name] = kite.root.id
+                    break
+                case "Options":
+                    {
+                        if (tag_value) {
+                            value[name] = kite.options[tag_value]
+                        }
+                        else {
+                            value[name] = kite.options
+                        }
+                    }
                     break
                 case "Sender":
                     value[name] = makeRemote((target: Target, method: string, args: any[]) => {
@@ -302,6 +338,9 @@ export class WorkerApplication extends BaseApplication {
                 case "Server":
                     value[name] = kite.root.server
                     break
+                case "Input":
+                    value[name] = kite.options[tag_value]
+                    break
             }
         }
 
@@ -335,20 +374,6 @@ export class WorkerApplication extends BaseApplication {
 
     resolveParameter(kite: Kite, parameter: ParameterMeta, context: any) {
         switch (parameter.type) {
-            case "Address":
-                return kite.address
-            case "ID":
-                return kite.id
-            case "Options":
-                {
-                    let key = parameter.value as string
-                    if (key) {
-                        return kite.options[key]
-                    }
-                    else {
-                        return kite.options
-                    }
-                }
             case "Socket":
                 return context.socket
             case "MessageBody":
@@ -487,7 +512,11 @@ export class WorkerApplication extends BaseApplication {
 
         kite.value = new descriptor(...params)
 
-        this.resolveProperties(kite, context)       //Todo 这个位置不一定适合
+        //Todo 这个位置不一定适合
+        //属性有两种情况，导致双向依赖
+        //1 被children依赖
+        //2 同时，属性需要关联到children
+        this.resolveProperties(kite, context)
     }
 
     createKiteChildren(kite: Kite, context: any) {
@@ -648,6 +677,33 @@ export class WorkerApplication extends BaseApplication {
     async startKiteChildren(kite: Kite) {
         for (const child of kite.children) {
             await this.startKite(child)
+        }
+    }
+
+    async stopKite(kite: Kite) {
+        let instance = kite.value
+        if (instance.onStart) {
+            await instance.onStop()
+            await this.stopKiteChildren(kite)
+        }
+
+        let timers = kite.timers
+        for (let name in timers) {
+            let timer = timers[name]
+            if (timer.repeat) {
+                clearTimeout(timer.id)
+            }
+            else {
+                clearInterval(timer.id)
+            }
+        }
+
+        kite.emit("stopped")
+    }
+
+    async stopKiteChildren(kite: Kite) {
+        for (const child of kite.children) {
+            await this.stopKite(child)
         }
     }
 

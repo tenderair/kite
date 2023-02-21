@@ -11,7 +11,7 @@ export class BaseApplication extends EventEmitter {
     protected kites: Map<Number, Kite> = new Map<Number, Kite>();
     protected config: any;
     protected session = 0
-    protected rpcs: { [key: number]: any } = {}
+    protected rpcs: Record<number, { resolve: Function, reject: Function }> = {}
 
     constructor(protected options: AppOptions) {
         super();

@@ -17,7 +17,7 @@ export class Kite extends EventEmitter {
     children: any[] = [];
     meta!: ClassMeta;
 
-    timers: any = {};
+    timers: Record<string, any> = {};
 
     [key: string]: any;
 
