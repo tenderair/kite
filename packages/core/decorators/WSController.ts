@@ -1,6 +1,6 @@
 import { get_or_add_class_meta } from "../utils/get-or-add-class-meta";
 
-export function WSController(name: string, port: number): ClassDecorator {
+export function WSController(name: string, port: number, options?: any): ClassDecorator {
     return function (target: Function) {
         const existed = get_or_add_class_meta(target);
 

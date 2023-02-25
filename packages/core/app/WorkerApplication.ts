@@ -6,7 +6,7 @@ import { AppOptions } from "../types/AppOptions";
 
 import { Kite } from "../types/Kite";
 import { Constructable } from "../types/Constructable";
-import { ClassMeta, MethodMeta, ParameterMeta, PropertyMeta } from "../types/Meta";
+import { KiteMetadata, MethodMeta, ParameterMeta, PropertyMeta } from "../types/Meta";
 import { makeRemote, Target } from "../types/Remote";
 import { Message } from "../types/Message";
 import { hash } from "../utils/hash";
@@ -23,17 +23,16 @@ export class WorkerApplication extends BaseApplication {
     index = workerData.index as number
     address_helper = workerData.index << 24
 
-    workers: { [key: number]: IndexMessagePort } = {};
-    //按名字划分
-    local_kites = new Map<string, IDKites>();
-    global_kites = new Map<string, number>();       //全局唯一名字的
+    workers: Record<number, IndexMessagePort> = {};     //[index] = IndexMessagePort
+    local_kites = new Map<string, IDKites>();           //[name] = IDKites
+    global_kites = new Map<string, number>();           //[name] = address
 
     constructor(options: AppOptions) {
         super(options);
 
         for (const descriptor of options.components) {
-            const meta = (Reflect as any).getMetadata("class", descriptor) as ClassMeta;
-            this.name_descriptors.set(meta.name || descriptor.name.toLowerCase(), descriptor);
+            const meta = (Reflect as any).getMetadata("class", descriptor) as KiteMetadata;
+            this.name_classes.set((meta.name ?? descriptor.name).toLowerCase(), descriptor);
         }
     }
 
@@ -483,13 +482,13 @@ export class WorkerApplication extends BaseApplication {
         kite.address = context.address
         kite.options = options
         kite.server = context.server
-        kite.descriptor = this.name_descriptors.get(kite.name) as Constructable<unknown>
+        kite.descriptor = this.name_classes.get(kite.name) as Constructable<unknown>
 
         if (kite.descriptor == null) {
             throw new Error(`no such kite:${kite.name}`)
         }
 
-        kite.meta = (Reflect as any).getMetadata("class", kite.descriptor) as ClassMeta;
+        kite.meta = (Reflect as any).getMetadata("class", kite.descriptor) as KiteMetadata;
 
         context.root = kite.root
 
@@ -505,10 +504,10 @@ export class WorkerApplication extends BaseApplication {
      */
     createKiteValue(kite: Kite, context: any) {
 
-        const meta = kite.meta as ClassMeta
+        const meta = kite.meta as KiteMetadata
         const descriptor = kite.descriptor as Constructable<unknown>
 
-        const params = this.resolveParameters(kite, meta.self, context)
+        const params = this.resolveParameters(kite, meta.construction, context)
 
         kite.value = new descriptor(...params)
 
@@ -558,7 +557,7 @@ export class WorkerApplication extends BaseApplication {
         }
         const kite = this.createRootKite(target, options, context)
 
-        const meta = kite.meta as ClassMeta
+        const meta = kite.meta as KiteMetadata
 
         if (meta?.value == null) {
             throw new Error("no transport in " + target.name)
@@ -716,12 +715,7 @@ export class WorkerApplication extends BaseApplication {
             index = hash(target.id) % this.config.threads
         }
         else if (target.name) {
-            let address = this.global_kites.get(target.name)
-            if (address == null) {
-                throw new Error("can't find global target:" + target.name)
-            }
-
-            index = address % this.config.threads
+            index = hash(target.name) % this.config.threads
         }
         else if (target.address) {
             index = target.address % this.config.threads

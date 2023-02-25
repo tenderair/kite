@@ -1,7 +1,7 @@
-import { ClassMeta, MethodMeta } from "../types/Meta";
+import { KiteMetadata, MethodMeta } from "../types/Meta";
 
-export function get_or_add_class_meta(target: Object): ClassMeta {
-    let existed = (Reflect as any).getMetadata("class", target) as ClassMeta;
+export function get_or_add_class_meta(target: Object): KiteMetadata {
+    let existed = (Reflect as any).getMetadata("class", target) as KiteMetadata;
 
     if (existed) {
         return existed
@@ -13,13 +13,14 @@ export function get_or_add_class_meta(target: Object): ClassMeta {
         methods: {},
         properties: {},
         tags: [],
-        self: {
+        construction: {
             name: "constructor",
             parameters: [],
             tags: [],
             results: [],
-        }
-    } as ClassMeta;
+        },
+        routers: {}
+    } as KiteMetadata;
 
     (Reflect as any).defineMetadata("class", existed, target);
 

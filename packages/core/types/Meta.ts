@@ -20,12 +20,18 @@ export interface PropertyMeta {
     name: string | symbol;
 }
 
-export interface ClassMeta {
+export interface RouterMeta {
+    name: string,
+    route: (...args: any[]) => void;
+}
+
+export interface KiteMetadata {
     name?: string,
-    type?: string,
+    type?: string,      //Controller/Service
     value?: any,
-    methods: { [key: string | symbol]: MethodMeta };
-    properties: { [key: string | symbol]: PropertyMeta };
+    construction: MethodMeta,           //构造函数
+    methods: Record<string | symbol, MethodMeta>;
+    properties: Record<string | symbol, PropertyMeta>;
     tags: MetaTag[];
-    self: MethodMeta,           //构造函数
+    routers: Record<string, RouterMeta>;
 }

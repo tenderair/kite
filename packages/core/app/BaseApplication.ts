@@ -3,12 +3,12 @@ import { readFileSync } from 'fs';
 import { AppOptions } from "../types/AppOptions";
 import { Kite } from "../types/Kite";
 import { parse } from 'yaml';
-import { ClassMeta } from "../types/Meta";
+import { KiteMetadata } from "../types/Meta";
 
 export class BaseApplication extends EventEmitter {
 
-    protected name_descriptors = new Map<string, Function>();
-    protected kites: Map<Number, Kite> = new Map<Number, Kite>();
+    protected name_classes = new Map<string, Function>();
+    protected kites: Map<Number, Kite> = new Map<Number, Kite>();       //[address] = kite
     protected config: any;
     protected session = 0
     protected rpcs: Record<number, { resolve: Function, reject: Function }> = {}
@@ -17,13 +17,13 @@ export class BaseApplication extends EventEmitter {
         super();
 
         for (const descriptor of options.services) {
-            const meta = (Reflect as any).getMetadata("class", descriptor) as ClassMeta;
-            this.name_descriptors.set(meta.name as string, descriptor);
+            const meta = (Reflect as any).getMetadata("class", descriptor) as KiteMetadata;
+            this.name_classes.set(meta.name as string, descriptor);
         }
 
         for (const descriptor of options.controllers) {
-            const meta = (Reflect as any).getMetadata("class", descriptor) as ClassMeta;
-            this.name_descriptors.set(meta.name as string, descriptor);
+            const meta = (Reflect as any).getMetadata("class", descriptor) as KiteMetadata;
+            this.name_classes.set(meta.name as string, descriptor);
         }
     }
 

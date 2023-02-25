@@ -8,7 +8,7 @@ export function get_or_add_method_meta(target: Object, propertyKey: string | sym
     let meta = get_or_add_class_meta(target)
 
     if (propertyKey == null) {
-        return meta.self
+        return meta.construction
     }
 
     let method = meta.methods[propertyKey] as MethodMeta

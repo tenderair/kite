@@ -4,7 +4,9 @@ import {
     WSController,
     OnConnection,
     OnDisconnect,
-    Message, MessageBody, Component, Input
+    Message, MessageBody, Component,
+    WebSocketServer,
+    Router,
 } from "@tenderair/kite.core"
 
 import { Server } from "socket.io";
@@ -57,9 +59,12 @@ export class Player {
 
         console.log(`player(${this.id}) remote call player(${pid}) start`)
 
-        const promise = this.caller("player", pid).add(1, 2)
+        const result = await this.caller("player", pid).add(1, 2)
 
-        console.log(`player(${this.id}) remote call player(${pid}) done:${await promise}`)
+        console.log(`player(${this.id}) remote call player(${pid}) done:${result}`)
+
+        //this.sender("client",pid).send()
+        //this.sender("socket_client",socketid).send()
     }
 }
 
@@ -76,8 +81,18 @@ Controller 中间件，会对单个 namespace 下的 connection 和 message 生�
 Connection 中间件，会对单个 namespace 下的 connection 生消息
 Message 中间件，会对单个 namespace 下的 message 生效
  */
-@WSController("gate", 80)
+@WSController("gate", 80, {
+    middleware: [],
+})
+@Router({
+    route(remote, method, args, type) {
+
+    },
+})
 export class Gateway {
+
+    @WebSocketServer()
+    server!: Server;
 
     @OnConnection()
     onConnected(session: any) {
@@ -104,7 +119,6 @@ export class Gateway {
     @Message("ping", true)
     ping(@MessageBody() data: object) {
         console.log("recv ping", data)
-
         return "hello"
     }
 

@@ -3,6 +3,7 @@ import { BaseApplication } from "./BaseApplication";
 import { Worker, SHARE_ENV, MessageChannel } from 'worker_threads';
 import { cpus } from 'os';
 import { Target } from "../types/Remote";
+import { hash } from "../utils/hash";
 
 export class MasterApplication extends BaseApplication {
 
@@ -92,7 +93,7 @@ export class MasterApplication extends BaseApplication {
         let names: { [key: string]: { children: Node[] } } = {}
 
         for (const service of this.config.services) {
-            const descriptor = this.name_descriptors.get(service.name);
+            const descriptor = this.name_classes.get(service.name);
             if (descriptor == null) {
                 throw new Error(`no such service:${service.name}`);
             }
@@ -129,7 +130,7 @@ export class MasterApplication extends BaseApplication {
 
     async bootControllers() {
         for (const controller of this.config.controllers || []) {
-            const descriptor = this.name_descriptors.get(controller.name);
+            const descriptor = this.name_classes.get(controller.name);
             if (descriptor == null) {
                 throw new Error(`no such controller:${controller.name}`);
             }
@@ -204,16 +205,19 @@ export class MasterApplication extends BaseApplication {
     }
 
     choose(target: Target) {
+
         let index = 0
         if (typeof target.id == "number") {
             index = target.id % this.config.threads
         }
         else if (typeof target.id == "string") {
-            let crc = 0     //todo:use crc value
-            index = crc % this.config.threads
+            index = hash(target.id) % this.config.threads
         }
-        else {
-            index = Math.floor(Math.random() * this.config.threads)
+        else if (target.name) {
+            index = hash(target.name) % this.config.threads
+        }
+        else if (target.address) {
+            index = target.address % this.config.threads
         }
 
         return this.workers[index]

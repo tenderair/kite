@@ -1,4 +1,9 @@
-export type Target = { name?: string, id?: string | number, address?: number }
+export interface Target {
+    name?: string,
+    id?: string | number,
+    address?: number
+}
+
 export type Sender = (target: Target, method: string, args: any[]) => any
 
 interface RemoteDescriptor {

@@ -1,6 +1,6 @@
 import EventEmitter = require("events")
 import { Constructable } from "./Constructable"
-import { ClassMeta } from "./Meta"
+import { KiteMetadata } from "./Meta"
 
 export class Kite extends EventEmitter {
 
@@ -13,9 +13,10 @@ export class Kite extends EventEmitter {
     options?: any;
 
     descriptor!: Constructable<unknown>;
+    meta!: KiteMetadata;
+
     value!: any;
-    children: any[] = [];
-    meta!: ClassMeta;
+    children: Kite[] = [];
 
     timers: Record<string, any> = {};
 
