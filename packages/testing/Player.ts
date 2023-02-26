@@ -7,12 +7,17 @@ import {
     Message, MessageBody, Component,
     WebSocketServer,
     Router,
+    WebSocket,
+    RemoteTarget,
 } from "@tenderair/kite.core"
 
-import { Server } from "socket.io";
+import { Server, Socket } from "socket.io";
 
 @Component({ name: "chat" })
 export class Chat {
+
+    @ID() id!: number;
+
     ping(a: number, b: number, c: number) {
         console.log("!!recv ping", a, b, c)
     }
@@ -85,18 +90,30 @@ Message 中间件，会对单个 namespace 下的 message 生效
     middleware: [],
 })
 @Router({
-    route(remote, method, args, type) {
-
+    name: "client",
+    route(name) {
+        return { name: "gate" }
     },
+    action(remote: RemoteTarget, method: string, args: any[]) {
+
+        let [pid] = remote
+
+        return {
+            method: "send_client",
+            args: [pid, method, ...args]
+        }
+    }
 })
 export class Gateway {
+
+    clients = new Map<number | string, Socket>()
 
     @WebSocketServer()
     server!: Server;
 
     @OnConnection()
-    onConnected(session: any) {
-        console.log("on connected")
+    onConnected(@WebSocket() socket: Socket) {
+        console.log("on connected", socket.id)
     }
 
     @OnDisconnect()
@@ -117,9 +134,23 @@ export class Gateway {
     }
 
     @Message("ping", true)
-    ping(@MessageBody() data: object) {
+    ping(@WebSocket() socket: Socket, @MessageBody() data: object) {
         console.log("recv ping", data)
         return "hello"
     }
 
+    send_client(pid: number, method: string, ...args: any[]) {
+        let client = this.clients.get(pid)
+        if (client == null) {
+            return
+        }
+        client.emit(method, ...args)
+    }
+
+    send_socket(pid: number,
+        method: string,
+        ...args: any[]) {
+
+
+    }
 }

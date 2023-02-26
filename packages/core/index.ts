@@ -14,3 +14,5 @@ export function createApp(options: AppOptions): MasterApplication | WorkerApplic
 }
 
 export * from "./decorators"
+export * from "./types"
+

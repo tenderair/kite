@@ -1,3 +1,4 @@
+import { Target } from "./Remote";
 
 export interface MetaTag {
     type: string,
@@ -20,16 +21,19 @@ export interface PropertyMeta {
     name: string | symbol;
 }
 
+export type RouterAction = (remote: any[], method: string, args: any[]) => { method: string, args: any[] }
+
 export interface RouterMeta {
     name: string,
-    route: (...args: any[]) => void;
+    route: (...args: any[]) => Target;
+    action?: RouterAction,
 }
 
 export interface KiteMetadata {
     name?: string,
-    type?: string,      //Controller/Service
-    value?: any,
-    construction: MethodMeta,           //构造函数
+    type?: string,                              //Controller/Service
+    value?: any,                                //
+    construction: MethodMeta,                   //构造函数
     methods: Record<string | symbol, MethodMeta>;
     properties: Record<string | symbol, PropertyMeta>;
     tags: MetaTag[];

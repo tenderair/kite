@@ -4,59 +4,57 @@ export interface Target {
     address?: number
 }
 
-export type Sender = (target: Target, method: string, args: any[]) => any
+export type RemoteTarget = any[]
+export type RemoteSender = (target: RemoteTarget, method: string, args: any[]) => any
 
 interface RemoteDescriptor {
-    target: Target,
-    send: Sender,
+    target: RemoteTarget,
+    send: RemoteSender,
 }
-
 
 /**
  * remote.player(10).ping().send()
  * @param service 
  * @returns 
  */
-export function makeRemote(send: Sender) {
+export function makeRemote(send: RemoteSender) {
 
-    const caches = new Map<String, any>()
+    const caches: any = {}
 
-    return function (name: string | number, id?: string | number) {
+    return function (...args: any[]) {
 
-        let key = `${name}(${id ? id : ''})`
-        let existed = caches.get(key)
+        let current = caches
+
+        for (let i = 0; i < args.length - 1; ++i) {
+            let key = args[i]
+            let child = current[key]
+
+            if (child == null) {
+                current[key] = child = {}
+            }
+
+            current = child
+        }
+
+        let last = args[args.length - 1]
+        let existed = current[last]
         if (existed) {
             return existed
         }
 
-        let address: number = 0
-        let real_name: any = name
-
-        if (typeof name == "number") {
-            address = name
-            real_name = undefined
+        const remote: RemoteDescriptor = {
+            target: args,
+            send,
         }
 
-
-        let remote: RemoteDescriptor = {
-            target: { address: address as number, name: real_name, id },
-            send: send
-        }
-
-        existed = make_target(remote)
-
-        caches.set(key, existed)
+        existed = current[last] = new Proxy(remote, {
+            get(target, p, receiver) {
+                return make_method(target, p as string)
+            }
+        })
 
         return existed
     }
-}
-
-export function make_target(remote: RemoteDescriptor) {
-    return new Proxy(remote, {
-        get(target, p, receiver) {
-            return make_method(remote, p as string)
-        }
-    })
 }
 
 export function make_method(remote: RemoteDescriptor, method: string) {

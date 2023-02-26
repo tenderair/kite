@@ -7,7 +7,7 @@ import { AppOptions } from "../types/AppOptions";
 import { Kite } from "../types/Kite";
 import { Constructable } from "../types/Constructable";
 import { KiteMetadata, MethodMeta, ParameterMeta, PropertyMeta } from "../types/Meta";
-import { makeRemote, Target } from "../types/Remote";
+import { makeRemote, RemoteTarget as RouteTarget, Target } from "../types/Remote";
 import { Message } from "../types/Message";
 import { hash } from "../utils/hash";
 import { ComponentOptions } from "../decorators";
@@ -79,8 +79,8 @@ export class WorkerApplication extends BaseApplication {
                 case "destroy":
                     this.onDestroy(from, body)
                     break
-                case "do":
-                    result = await this.onDo(from, source, body)
+                case "action":
+                    result = await this.onAction(from, source, body)
                     break
                 case "resp":
                     this.onResp(from, session as number, body)
@@ -193,16 +193,20 @@ export class WorkerApplication extends BaseApplication {
      * @param param2 
      * @returns 
      */
-    async onDo(from: MessagePort, source: number, { target, method, args }: { target: Target, method: string, args: any[] }) {
+    async onAction(from: MessagePort, source: Target, { target, method, args }: { target: RouteTarget, method: string, args: any[] }) {
 
-        let kite = this.find(target)
+        let route_target = this.route(target)
+
+        let kite = this.find(route_target)
         if (kite == null) {
-            throw new Error(`no such ${target.name}(${target.id ? target.id : ''})`)
+            throw new Error(`no such kite(${target.join(",")})`)
         }
 
-        const current = this.findMethod(kite, method)
+        let { method: action_method, args: action_args } = this.route_action(kite, target, method, args)
+
+        const current = this.findMethod(kite, action_method)
         if (current == null) {
-            throw new Error(`no such method ${target.name}(${target.id ? target.id : ''}).${method}()`)
+            throw new Error(`no such kite(${target.join(",")}).${method}()`)
         }
 
         let meta = current.meta
@@ -210,15 +214,14 @@ export class WorkerApplication extends BaseApplication {
 
         let result = null
 
-        let method_meta = meta.methods[method]
+        let method_meta = meta.methods[action_method]
         if (method_meta) {
-            result = await this.resolveMethod(current, method_meta, args)
+            result = await this.resolveMethod(current, method_meta, action_args, { source })
             this.resolveResult(current, method_meta, result)
         }
         else {
-            result = await instance[method](...args)
+            result = await instance[action_method](...action_args)
         }
-
         return result
     }
 
@@ -296,10 +299,10 @@ export class WorkerApplication extends BaseApplication {
                     }
                     break
                 case "Sender":
-                    value[name] = makeRemote((target: Target, method: string, args: any[]) => {
+                    value[name] = makeRemote((target: RouteTarget, method: string, args: any[]) => {
                         const message = {
-                            type: "do",
-                            source: kite.root.address,
+                            type: "action",
+                            source: { name: kite.root.name, address: kite.root.address, id: kite.root.id },
                             body: {
                                 target,
                                 method,
@@ -311,14 +314,14 @@ export class WorkerApplication extends BaseApplication {
                     })
                     break
                 case "Caller":
-                    value[name] = makeRemote((target: Target, method: string, args: any[]) => {
+                    value[name] = makeRemote((target: RouteTarget, method: string, args: any[]) => {
                         const session = ++this.session
                         const port = this.choose(target)
 
                         const message = {
-                            type: "do",
+                            type: "action",
                             session,
-                            source: kite.root.address,
+                            source: { name: kite.root.name, address: kite.root.address, id: kite.root.id },
                             body: {
                                 target,
                                 method,
@@ -373,7 +376,7 @@ export class WorkerApplication extends BaseApplication {
 
     resolveParameter(kite: Kite, parameter: ParameterMeta, context: any) {
         switch (parameter.type) {
-            case "Socket":
+            case "WebSocket":
                 return context.socket
             case "MessageBody":
                 {
@@ -382,16 +385,10 @@ export class WorkerApplication extends BaseApplication {
                         return
                     }
 
-                    const body = args[parameter.index || 0]
-
-                    let key = parameter.value as string
-                    if (key) {
-                        return body[key]
-                    }
-                    else {
-                        return body
-                    }
+                    return args[parameter.value ?? 0]
                 }
+            case "Source":
+                return context.source
 
         }
     }
@@ -589,6 +586,7 @@ export class WorkerApplication extends BaseApplication {
             }
         }
         server.on("connection", async (socket) => {
+
             if (onConnected) {
                 await this.resolveMethod(kite, onConnected, [], { socket })
             }
@@ -706,22 +704,83 @@ export class WorkerApplication extends BaseApplication {
         }
     }
 
-    choose(target: Target) {
-        let index = 0
-        if (typeof target.id == "number") {
-            index = target.id % this.config.threads
-        }
-        else if (typeof target.id == "string") {
-            index = hash(target.id) % this.config.threads
-        }
-        else if (target.name) {
-            index = hash(target.name) % this.config.threads
-        }
-        else if (target.address) {
-            index = target.address % this.config.threads
-        }
+    choose(target: RouteTarget) {
+
+        let route_target = this.route(target)
+        let hash = this.route_hash(route_target)
+
+        let index = hash % this.config.threads
 
         return this.workers[index]
+    }
+
+    route(target: RouteTarget): Target {
+
+        let first = target[0]
+
+        if (typeof first == "number") {         //address
+            return this.address_route(first)
+        }
+
+        if (typeof first == "string") {
+            return this.name_route(first, target.slice(1))
+        }
+
+        throw new Error(`can't find route info for:[${target.join(",")}]`)
+    }
+
+    address_route(address: number): Target {
+        return { address }
+    }
+
+    name_route(name: string, args: any[]): Target {
+
+        let router = this.extra_routers.get(name)
+
+        let target
+        if (router) {
+            target = router.route(name, ...args)
+        }
+        else {
+            target = { name, id: args[0] }
+        }
+
+        return target
+    }
+
+    route_hash(target: Target) {
+
+        let target_hash = 0
+        if (typeof target.id == "number") {
+            target_hash = target.id
+        }
+        else if (typeof target.id == "string") {
+            target_hash = hash(target.id)
+        }
+        else if (target.name) {
+            target_hash = hash(target.name)
+        }
+        else if (target.address) {
+            target_hash = target.address
+        }
+
+        return target_hash
+    }
+
+    route_action(kite: Kite, target: RouteTarget, method: string, args: any[]) {
+        let meta = kite.meta
+        let route_name = typeof target[0] == "string" ? target[0] : ''
+
+        let router = meta.routers[route_name]
+        let action = router?.action
+
+        if (action) {
+            return action.call(kite.value, target, method, args)
+        }
+
+        return {
+            method, args
+        }
     }
 
     /**

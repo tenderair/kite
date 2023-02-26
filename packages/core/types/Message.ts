@@ -1,6 +1,8 @@
+import { Target } from "./Remote";
+
 export interface Message {
     session?: number,
     type: string,
-    source: number,
+    source: Target,
     body: any
 }
