@@ -74,6 +74,7 @@ export interface RemoteTarget {
     off: EventRemover;
     create: RemoteCreator;
     destroy: () => void;
+    emit: (event: string, ...args: any[]) => void;
 }
 
 export type Remote = (...args: any[]) => RemoteTarget

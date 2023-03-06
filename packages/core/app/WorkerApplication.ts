@@ -88,6 +88,15 @@ export class WorkerApplication extends BaseApplication {
                 case "regist":
                     this.onRegist(from, body)
                     break
+                case "Listen":
+                    this.onListen(from, source, body)
+                    break
+                case "Remove":
+                    this.onRemove(from, source, body)
+                    break
+                case "Emit":
+                    this.onEmit(from, source, body)
+                    break
                 default:
                     break
             }
@@ -266,6 +275,76 @@ export class WorkerApplication extends BaseApplication {
 
     onRegist(from: MessagePort, { name, address }: { name: string, address: number }) {
         this.global_kites.set(name, address)
+    }
+
+    onListen(from: MessagePort, source: Target, { target, event, method }: { target: RouteParams, event: string, method: string }) {
+
+        const route_target = this.route(target)
+        const kite = this.find(route_target)
+        const address = source.address
+
+        if (kite == null) {
+            throw new Error(`no such kite(${target.join(",")}) to listen ${event}(...)`)
+        }
+
+        let events = kite._listeners[event]
+        if (events == null) {
+            events = kite._listeners[event] = []
+        }
+
+        events.push({ source: address as number, method })
+    }
+
+    onRemove(from: MessagePort, source: Target, { target, event, method }: { target: RouteParams, event: string, method: string }) {
+
+        const route_target = this.route(target)
+        const kite = this.find(route_target)
+        const address = source.address
+
+        if (kite == null) {
+            throw new Error(`no such kite(${target.join(",")}) to listen ${event}(...)`)
+        }
+
+        let events = kite._listeners[event]
+        if (events == null) {
+            return
+        }
+
+        let index = events.findIndex((element) => {
+            return element.method == method && element.source == address
+        })
+
+        events.splice(index, 1)
+    }
+
+    onEmit(from: MessagePort, source: Target, { target, event, args }: { target: RouteParams, event: string, args: any[] }) {
+
+        const route_target = this.route(target)
+        const kite = this.find(route_target)
+
+        if (kite == null) {
+            throw new Error(`no such kite(${target.join(",")}) to listen ${event}(...)`)
+        }
+
+        let events = kite._listeners[event]
+        if (events == null) {
+            return
+        }
+
+        for (const element of events) {
+            const source_target = [element.source]
+            const port = this.choose(source_target)
+
+            port.postMessage({
+                type: "action",
+                source,
+                body: {
+                    target,
+                    method: element.method,
+                    args,
+                }
+            })
+        }
     }
 
     async resolveProperties(kite: Kite, context?: any) {
@@ -829,7 +908,7 @@ export class WorkerApplication extends BaseApplication {
                 target,
                 on(event: string, method: string) {
                     port.postMessage({
-                        type: "on",
+                        type: "listen",
                         source,
                         body: {
                             source,
@@ -841,7 +920,7 @@ export class WorkerApplication extends BaseApplication {
                 },
                 off(event: string, method: string) {
                     port.postMessage({
-                        type: "off",
+                        type: "remove",
                         source,
                         body: {
                             source,
@@ -906,6 +985,17 @@ export class WorkerApplication extends BaseApplication {
                         that.rpcs[session] = { resolve, reject }
                     })
                 },
+                emit(event: string, ...args: any[]) {
+                    port.postMessage({
+                        type: "emit",
+                        source,
+                        body: {
+                            target,
+                            event,
+                            args,
+                        }
+                    })
+                }
             }
 
             return remote

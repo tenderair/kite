@@ -59,8 +59,6 @@ export class Player {
 
         console.log("this is timer")
 
-        // this.sender("player", 2).ping(1, 2, 3)
-
         let pid = 1 + Math.round(Math.random())
 
         console.log(`player(${this.id}) remote call player(${pid}) start`)
@@ -69,13 +67,18 @@ export class Player {
 
         console.log(`player(${this.id}) remote call player(${pid}) done:${result}`)
 
+        this.remote("player", pid).on("login", "on_logout")
+        this.remote("player", pid).emit("login")
         this.remote("player", pid).destroy()
 
-        //this.remote("client",pid).send("add",1,2,3)
-        //this.remote("client",pid).call("add",1,2,3)
+        // this.remote().emit()
+        // this.remote("player",pid).on("logout","on_logout")
+        // this.remote().on("logout","on_logout")                   //监听自己的信息
+        // this.remote().on()
+    }
 
-        //this.sender("client",pid).send()
-        //this.sender("socket_client",socketid).send()
+    on_logout() {
+
     }
 }
 

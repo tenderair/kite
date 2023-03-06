@@ -20,6 +20,7 @@ export class Kite extends EventEmitter {
     refs: Record<string, Kite> = {}
 
     timers: Record<string, any> = {};
+    _listeners: Record<string, Array<{ source: number, method: string }>> = {};   //记录本地监听的那些 [event] = {}
 
     [key: string]: any;
 
