@@ -1,15 +1,11 @@
 import { get_or_add_class_meta } from "../utils/get-or-add-class-meta";
 
-type Element = [string, {
-    props: object,
-    on: object,
-    ref: string
-}]
-type Template = () => Element[]
+type Element = [string, Record<string, string>]
+type Elements = Array<Element>
 
 export interface ComponentOptions {
     name?: string;
-    template?: Template;
+    template?: Elements;
 }
 
 export function Component(options: ComponentOptions): ClassDecorator {

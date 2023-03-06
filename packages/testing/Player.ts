@@ -1,6 +1,6 @@
 import {
     Service, ID, Address,
-    Sender, Caller, Interval,
+    Interval,
     WSController,
     OnConnection,
     OnDisconnect,
@@ -8,7 +8,9 @@ import {
     WebSocketServer,
     Router,
     WebSocket,
-    RemoteTarget,
+    RemoteRouter,
+    Remote,
+    RouteParams,
 } from "@tenderair/kite.core"
 
 import { Server, Socket } from "socket.io";
@@ -28,25 +30,24 @@ export class Chat {
     }
 }
 
+let template = `
+    <chat ref="chat" :name='this.name'></chat>
+`
+
 @Component({
-    template: () => {
-        return [
-            ["chat", {
-                props: {},
-                on: {},
-                ref: "chat"
-            }]
-        ]
-    }
+    template: [
+        ["chat", { ref: "chat" }]
+    ]
 })
 @Service("player")
 export class Player {
 
     @Address() address!: number;
     @ID() id!: number;
-    @Sender() sender!: Function;
-    @Caller() caller!: Function
 
+    @RemoteRouter() remote!: Remote;
+
+    // @Reference("chat")
     chat!: Chat;
 
     onStart() {
@@ -64,12 +65,23 @@ export class Player {
 
         console.log(`player(${this.id}) remote call player(${pid}) start`)
 
-        const result = await this.caller("player", pid).add(1, 2)
+        const result = await this.remote("player", pid).call("add", 1, 2)
 
         console.log(`player(${this.id}) remote call player(${pid}) done:${result}`)
 
+        this.remote("player", pid).destroy()
+
+        //this.remote("client",pid).send("add",1,2,3)
+        //this.remote("client",pid).call("add",1,2,3)
+
         //this.sender("client",pid).send()
         //this.sender("socket_client",socketid).send()
+    }
+}
+
+interface DataSocket extends Socket {
+    data: {
+        pid: number
     }
 }
 
@@ -94,7 +106,7 @@ Message 中间件，会对单个 namespace 下的 message 生效
     route(name) {
         return { name: "gate" }
     },
-    action(remote: RemoteTarget, method: string, args: any[]) {
+    action(remote: RouteParams, method: string, args: any[]) {
 
         let [pid] = remote
 
@@ -106,24 +118,45 @@ Message 中间件，会对单个 namespace 下的 message 生效
 })
 export class Gateway {
 
-    clients = new Map<number | string, Socket>()
+    clients = new Map<number, Socket>()
 
     @WebSocketServer()
     server!: Server;
 
-    @OnConnection()
-    onConnected(@WebSocket() socket: Socket) {
+    @OnConnection({
+        middleware: [],
+    })
+    onConnected(@WebSocket() socket: DataSocket) {
+        socket.data = { pid: 0 }
         console.log("on connected", socket.id)
     }
 
     @OnDisconnect()
-    onDisconnect() {
+    onDisconnect(@WebSocket() socket: DataSocket) {
+
+        this.clients.delete(socket.data.pid)
+
         console.log("on disconnect")
     }
 
     @Message("login")
-    login(@MessageBody() data: object) {
-        console.log("recv login", data)
+    login(@WebSocket() socket: DataSocket, @MessageBody() data: any) {
+
+        let pid = data.pid
+
+        if (pid == null) {
+
+            socket.disconnect(true)
+
+            return {
+                event: 'login',
+                data: { ok: false }
+            }
+        }
+
+        socket.data.pid = pid
+
+        this.clients.set(pid, socket)
 
         return {
             event: "login",
@@ -154,3 +187,4 @@ export class Gateway {
 
     }
 }
+

@@ -8,8 +8,7 @@ export * from "./Address"
 export * from "./ID"
 
 export * from "./Router"
-export * from "./Sender"
-export * from "./Caller"
+export * from "./RemoteRouter"
 
 export * from "./Interval"
 
@@ -24,6 +23,8 @@ export * from "./WebSocket"
 export * from "./Component"
 export * from "./Input"
 export * from "./Output"
+export * from "./Reference"
+export * from "./Middleware"
 
 
 

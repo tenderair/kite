@@ -39,3 +39,8 @@ export interface KiteMetadata {
     tags: MetaTag[];
     routers: Record<string, RouterMeta>;
 }
+
+export interface MiddlewareMetadata {
+    name?: string,
+    type?: string,
+}

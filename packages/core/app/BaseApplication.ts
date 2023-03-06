@@ -4,7 +4,6 @@ import { AppOptions } from "../types/AppOptions";
 import { Kite } from "../types/Kite";
 import { parse } from 'yaml';
 import { KiteMetadata, RouterMeta } from "../types/Meta";
-import { RouterOptions } from "../decorators/Router";
 
 export class BaseApplication extends EventEmitter {
 

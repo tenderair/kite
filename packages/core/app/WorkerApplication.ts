@@ -7,7 +7,7 @@ import { AppOptions } from "../types/AppOptions";
 import { Kite } from "../types/Kite";
 import { Constructable } from "../types/Constructable";
 import { KiteMetadata, MethodMeta, ParameterMeta, PropertyMeta } from "../types/Meta";
-import { makeRemote, RemoteTarget as RouteTarget, Target } from "../types/Remote";
+import { Remote, RemoteTarget, RouteParams, Target } from "../types/Remote";
 import { Message } from "../types/Message";
 import { hash } from "../utils/hash";
 import { ComponentOptions } from "../decorators";
@@ -164,9 +164,11 @@ export class WorkerApplication extends BaseApplication {
         return kite.address
     }
 
-    async onDestroy(from: MessagePort, { target }: { target: Target }) {
+    async onDestroy(from: MessagePort, { target, source }: { target: RouteParams, source: Target }) {
 
-        const kite = this.find(target)
+        let route_target = this.route(target)
+
+        const kite = this.find(route_target)
         if (kite == null) {
             return
         }
@@ -177,13 +179,15 @@ export class WorkerApplication extends BaseApplication {
             this.global_kites.delete(kite.name)
         }
         else {
-            let names = this.local_kites.get(target.name as string)
+            let names = this.local_kites.get(route_target.name as string)
             if (names) {
                 names.delete(kite.id)
             }
         }
 
         await this.stopKite(kite)
+
+        console.log(`${route_target.name}(${route_target.id ?? ""}).destroy()`)
     }
 
     /**
@@ -193,13 +197,13 @@ export class WorkerApplication extends BaseApplication {
      * @param param2 
      * @returns 
      */
-    async onAction(from: MessagePort, source: Target, { target, method, args }: { target: RouteTarget, method: string, args: any[] }) {
+    async onAction(from: MessagePort, source: Target, { target, method, args }: { target: RouteParams, method: string, args: any[] }) {
 
         let route_target = this.route(target)
 
         let kite = this.find(route_target)
         if (kite == null) {
-            throw new Error(`no such kite(${target.join(",")})`)
+            throw new Error(`no such kite(${target.join(",")}) to invoke ${method}(...)`)
         }
 
         let { method: action_method, args: action_args } = this.route_action(kite, target, method, args)
@@ -267,82 +271,41 @@ export class WorkerApplication extends BaseApplication {
     async resolveProperties(kite: Kite, context?: any) {
 
         const meta = kite.meta
+        const value = kite.value
 
         for (const name in meta.properties) {
             const property = meta.properties[name]
-            this.resolveProperty(kite, property, context)
+            value[name] = this.resolveProperty(kite, property, context)
         }
     }
 
-    async resolveProperty(kite: Kite, meta: PropertyMeta, context?: any) {
-
-        const name = meta.name
-        const value = kite.value
-
+    resolveProperty(kite: Kite, meta: PropertyMeta, context?: any) {
         for (const tag of meta.tags) {
             const tag_value = tag.value
             switch (tag.type) {
                 case "Address":
-                    value[name] = kite.root.address
-                    break
+                    return kite.root.address
                 case "ID":
-                    value[name] = kite.root.id
+                    return kite.root.id
                     break
                 case "Options":
                     {
                         if (tag_value) {
-                            value[name] = kite.options[tag_value]
+                            return kite.options[tag_value]
                         }
                         else {
-                            value[name] = kite.options
+                            return kite.options
                         }
                     }
                     break
-                case "Sender":
-                    value[name] = makeRemote((target: RouteTarget, method: string, args: any[]) => {
-                        const message = {
-                            type: "action",
-                            source: { name: kite.root.name, address: kite.root.address, id: kite.root.id },
-                            body: {
-                                target,
-                                method,
-                                args,
-                            }
-                        }
-                        const port = this.choose(target)
-                        port.postMessage(message)
-                    })
-                    break
-                case "Caller":
-                    value[name] = makeRemote((target: RouteTarget, method: string, args: any[]) => {
-                        const session = ++this.session
-                        const port = this.choose(target)
-
-                        const message = {
-                            type: "action",
-                            session,
-                            source: { name: kite.root.name, address: kite.root.address, id: kite.root.id },
-                            body: {
-                                target,
-                                method,
-                                args,
-                            }
-                        }
-
-                        return new Promise((resolve, reject) => {
-
-                            port.postMessage(message)
-
-                            this.rpcs[session] = { resolve, reject }
-                        })
-                    })
-                    break
+                case "RemoteRouter":
+                    return this.make_remote(kite)
                 case "Server":
-                    value[name] = kite.root.server
-                    break
+                    return kite.root.server
                 case "Input":
-                    value[name] = kite.options[tag_value]
-                    break
+                    return kite.options[tag_value]
+                case "Reference":
+                    return kite.root.refs[tag_value]
             }
         }
 
@@ -430,9 +393,7 @@ export class WorkerApplication extends BaseApplication {
      */
     createRootKite(target: Target, options: any, context: any): Kite {
 
-        const kite = this.createKite(target, options, context)
-
-        kite.root = kite
+        const kite = this.createKite(target, options, undefined, context)
 
         console.log(`create ${kite.address}=${kite.name}(${kite.id ? kite.id : ''})`)
 
@@ -469,11 +430,12 @@ export class WorkerApplication extends BaseApplication {
      * @param options 
      * @returns 
      */
-    createKite(target: Target, options: any, context: any): Kite {
+    createKite(target: Target, options: any, parent: Kite | undefined, context: any): Kite {
 
         const kite = new Kite()
 
-        kite.root = context.root || kite
+        kite.root = parent ? parent.root : kite
+        kite.parent = parent
         kite.name = target.name as string
         kite.id = target.id
         kite.address = context.address
@@ -510,8 +472,8 @@ export class WorkerApplication extends BaseApplication {
 
         //Todo 这个位置不一定适合
         //属性有两种情况，导致双向依赖
-        //1 被children依赖
-        //2 同时，属性需要关联到children
+        //1 被children依赖,此时要先于 children 处理
+        //2 同时，属性需要关联到children，此时要后于children
         this.resolveProperties(kite, context)
     }
 
@@ -525,7 +487,7 @@ export class WorkerApplication extends BaseApplication {
         }
 
         const options = component_tag.value as ComponentOptions
-        const elements = options?.template?.call(kite)
+        const elements = options?.template
 
         if (elements == null) {
             return
@@ -533,12 +495,24 @@ export class WorkerApplication extends BaseApplication {
 
         for (const element of elements) {
             const name = element[0]
-            const { props, on, ref } = element[1]
+            const attrs = element[1]
 
-            const child = this.createKite({ name }, props, context)
+            const props: Record<string, any> = {}
 
-            if (ref) {
-                kite.value[ref] = child.value
+            for (let name in attrs) {
+                let val = attrs[name]
+                if (name.startsWith(":")) {
+                    val = eval.call(kite, val)
+                    name = name.substring(1)
+                }
+
+                props[name] = val
+            }
+
+            const child = this.createKite({ name }, props, kite, context)
+
+            if (props.ref) {
+                kite.root.refs[props.ref] = child.value
             }
 
             kite.children.push(child)
@@ -679,7 +653,7 @@ export class WorkerApplication extends BaseApplication {
 
     async stopKite(kite: Kite) {
         let instance = kite.value
-        if (instance.onStart) {
+        if (instance.onStop) {
             await instance.onStop()
             await this.stopKiteChildren(kite)
         }
@@ -704,7 +678,7 @@ export class WorkerApplication extends BaseApplication {
         }
     }
 
-    choose(target: RouteTarget) {
+    choose(target: RouteParams) {
 
         let route_target = this.route(target)
         let hash = this.route_hash(route_target)
@@ -714,7 +688,7 @@ export class WorkerApplication extends BaseApplication {
         return this.workers[index]
     }
 
-    route(target: RouteTarget): Target {
+    route(target: RouteParams): Target {
 
         let first = target[0]
 
@@ -767,7 +741,7 @@ export class WorkerApplication extends BaseApplication {
         return target_hash
     }
 
-    route_action(kite: Kite, target: RouteTarget, method: string, args: any[]) {
+    route_action(kite: Kite, target: RouteParams, method: string, args: any[]) {
         let meta = kite.meta
         let route_name = typeof target[0] == "string" ? target[0] : ''
 
@@ -816,6 +790,125 @@ export class WorkerApplication extends BaseApplication {
             }
 
             worker.postMessage(message)
+        }
+    }
+
+    make_remote(kite: Kite): Remote {
+        const source = { name: kite.root.name, address: kite.root.address, id: kite.root.id }
+        const caches: any = {}
+
+        const that = this
+
+        return (...target: RouteParams) => {
+            let current = caches
+
+            if (target.length == 0) {
+                target = [kite.root.address]
+            }
+
+            for (let i = 0; i < target.length - 1; ++i) {
+                let key = target[i]
+                let child = current[key]
+
+                if (child == null) {
+                    current[key] = child = {}
+                }
+
+                current = child
+            }
+
+            let last = target[target.length - 1]
+            let existed = current[last]
+            if (existed) {
+                return existed
+            }
+
+            const port = that.choose(target)
+
+            const remote: RemoteTarget = current[last] = {
+                target,
+                on(event: string, method: string) {
+                    port.postMessage({
+                        type: "on",
+                        source,
+                        body: {
+                            source,
+                            target,
+                            event,
+                            method,
+                        }
+                    })
+                },
+                off(event: string, method: string) {
+                    port.postMessage({
+                        type: "off",
+                        source,
+                        body: {
+                            source,
+                            target,
+                            event,
+                            method,
+                        }
+                    })
+                },
+                create(options?: any) {
+                    const session = ++that.session
+
+                    port.postMessage({
+                        type: "create",
+                        session,
+                        source,
+                        body: {
+                            target,
+                            options,
+                        }
+                    })
+
+                    return new Promise<number>((resolve, reject) => {
+                        that.rpcs[session] = { resolve, reject }
+                    })
+                },
+                destroy() {
+                    port.postMessage({
+                        type: "destroy",
+                        source,
+                        body: {
+                            target,
+                        }
+                    })
+                },
+                send(method: string, ...args: any[]) {
+                    port.postMessage({
+                        type: "action",
+                        source,
+                        body: {
+                            target,
+                            method,
+                            args,
+                        }
+                    })
+                },
+                call(method: string, ...args: any[]) {
+                    const session = ++that.session
+
+                    port.postMessage({
+                        type: "action",
+                        session,
+                        source,
+                        body: {
+                            target,
+                            method,
+                            args,
+                        }
+                    })
+
+                    return new Promise((resolve, reject) => {
+                        that.rpcs[session] = { resolve, reject }
+                    })
+                },
+            }
+
+            return remote
         }
     }
 
