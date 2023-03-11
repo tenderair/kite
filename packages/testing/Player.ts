@@ -4,13 +4,13 @@ import {
     WSController,
     OnConnection,
     OnDisconnect,
-    Message, MessageBody, Component,
+    OnMessage, MessageBody, Component,
     WebSocketServer,
     Router,
     WebSocket,
     RemoteRouter,
     Remote,
-    RouteParams,
+    Target,
 } from "@tenderair/kite.core"
 
 import { Server, Socket } from "socket.io";
@@ -29,10 +29,6 @@ export class Chat {
         return a + b
     }
 }
-
-let template = `
-    <chat ref="chat" :name='this.name'></chat>
-`
 
 @Component({
     template: [
@@ -59,7 +55,10 @@ export class Player {
 
         console.log("this is timer")
 
-        let pid = 1 + Math.round(Math.random())
+        let pid = 1
+        if (this.id == 2) {
+            pid = 2
+        }
 
         console.log(`player(${this.id}) remote call player(${pid}) start`)
 
@@ -69,7 +68,8 @@ export class Player {
 
         this.remote("player", pid).on("login", "on_logout")
         this.remote("player", pid).emit("login")
-        this.remote("player", pid).destroy()
+
+        this.remote.self.destroy()
 
         // this.remote().emit()
         // this.remote("player",pid).on("logout","on_logout")
@@ -77,9 +77,7 @@ export class Player {
         // this.remote().on()
     }
 
-    on_logout() {
-
-    }
+    on_logout() { }
 }
 
 interface DataSocket extends Socket {
@@ -109,9 +107,9 @@ Message 中间件，会对单个 namespace 下的 message 生效
     route(name) {
         return { name: "gate" }
     },
-    action(remote: RouteParams, method: string, args: any[]) {
+    action(remote: Target, method: string, args: any[]) {
 
-        let [pid] = remote
+        let { id: pid } = remote
 
         return {
             method: "send_client",
@@ -142,7 +140,7 @@ export class Gateway {
         console.log("on disconnect")
     }
 
-    @Message("login")
+    @OnMessage("login")
     login(@WebSocket() socket: DataSocket, @MessageBody() data: any) {
 
         let pid = data.pid
@@ -169,7 +167,7 @@ export class Gateway {
         }
     }
 
-    @Message("ping", true)
+    @OnMessage("ping", { ack: true })
     ping(@WebSocket() socket: Socket, @MessageBody() data: object) {
         console.log("recv ping", data)
         return "hello"

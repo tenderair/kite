@@ -13,7 +13,7 @@ export * from "./RemoteRouter"
 export * from "./Interval"
 
 export * from "./WSController"
-export * from "./Message"
+export * from "./OnMessage"
 export * from "./OnConnection"
 export * from "./OnDisconnect"
 export * from "./MessageBody"

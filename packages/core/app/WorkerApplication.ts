@@ -7,7 +7,7 @@ import { AppOptions } from "../types/AppOptions";
 import { Kite } from "../types/Kite";
 import { Constructable } from "../types/Constructable";
 import { KiteMetadata, MethodMeta, ParameterMeta, PropertyMeta } from "../types/Meta";
-import { Remote, RemoteTarget, RouteParams, Target } from "../types/Remote";
+import { Remote, RemoteAgent, RouteParams, Target } from "../types/Remote";
 import { Message } from "../types/Message";
 import { hash } from "../utils/hash";
 import { ComponentOptions } from "../decorators";
@@ -173,11 +173,9 @@ export class WorkerApplication extends BaseApplication {
         return kite.address
     }
 
-    async onDestroy(from: MessagePort, { target, source }: { target: RouteParams, source: Target }) {
+    async onDestroy(from: MessagePort, { target, source }: { target: Target, source: Target }) {
 
-        let route_target = this.route(target)
-
-        const kite = this.find(route_target)
+        const kite = this.find(target)
         if (kite == null) {
             return
         }
@@ -188,7 +186,7 @@ export class WorkerApplication extends BaseApplication {
             this.global_kites.delete(kite.name)
         }
         else {
-            let names = this.local_kites.get(route_target.name as string)
+            let names = this.local_kites.get(kite.name)
             if (names) {
                 names.delete(kite.id)
             }
@@ -196,7 +194,7 @@ export class WorkerApplication extends BaseApplication {
 
         await this.stopKite(kite)
 
-        console.log(`${route_target.name}(${route_target.id ?? ""}).destroy()`)
+        console.log(`${kite.name}(${kite.id ?? ""}).destroy()`)
     }
 
     /**
@@ -206,20 +204,18 @@ export class WorkerApplication extends BaseApplication {
      * @param param2 
      * @returns 
      */
-    async onAction(from: MessagePort, source: Target, { target, method, args }: { target: RouteParams, method: string, args: any[] }) {
+    async onAction(from: MessagePort, source: Target, { target, method, args }: { target: Target, method: string, args: any[] }) {
 
-        let route_target = this.route(target)
-
-        let kite = this.find(route_target)
+        let kite = this.find(target)
         if (kite == null) {
-            throw new Error(`no such kite(${target.join(",")}) to invoke ${method}(...)`)
+            throw new Error(`no such kite(${JSON.stringify(target)}) to invoke ${method}(...)`)
         }
 
         let { method: action_method, args: action_args } = this.route_action(kite, target, method, args)
 
         const current = this.findMethod(kite, action_method)
         if (current == null) {
-            throw new Error(`no such kite(${target.join(",")}).${method}()`)
+            throw new Error(`no such kite(${JSON.stringify(target)}).${method}()`)
         }
 
         let meta = current.meta
@@ -277,14 +273,13 @@ export class WorkerApplication extends BaseApplication {
         this.global_kites.set(name, address)
     }
 
-    onListen(from: MessagePort, source: Target, { target, event, method }: { target: RouteParams, event: string, method: string }) {
+    onListen(from: MessagePort, source: Target, { target, event, method }: { target: Target, event: string, method: string }) {
 
-        const route_target = this.route(target)
-        const kite = this.find(route_target)
+        const kite = this.find(target)
         const address = source.address
 
         if (kite == null) {
-            throw new Error(`no such kite(${target.join(",")}) to listen ${event}(...)`)
+            throw new Error(`no such kite(${JSON.stringify(target)}) to listen ${event}(...)`)
         }
 
         let events = kite._listeners[event]
@@ -292,17 +287,16 @@ export class WorkerApplication extends BaseApplication {
             events = kite._listeners[event] = []
         }
 
-        events.push({ source: address as number, method })
+        events.push({ address: address as number, method })
     }
 
-    onRemove(from: MessagePort, source: Target, { target, event, method }: { target: RouteParams, event: string, method: string }) {
+    onRemove(from: MessagePort, source: Target, { target, event, method }: { target: Target, event: string, method: string }) {
 
-        const route_target = this.route(target)
-        const kite = this.find(route_target)
+        const kite = this.find(target)
         const address = source.address
 
         if (kite == null) {
-            throw new Error(`no such kite(${target.join(",")}) to listen ${event}(...)`)
+            throw new Error(`no such kite(${JSON.stringify(target)}) to remove ${event}(...)`)
         }
 
         let events = kite._listeners[event]
@@ -311,19 +305,18 @@ export class WorkerApplication extends BaseApplication {
         }
 
         let index = events.findIndex((element) => {
-            return element.method == method && element.source == address
+            return element.method == method && element.address == address
         })
 
         events.splice(index, 1)
     }
 
-    onEmit(from: MessagePort, source: Target, { target, event, args }: { target: RouteParams, event: string, args: any[] }) {
+    onEmit(from: MessagePort, source: Target, { target, event, args }: { target: Target, event: string, args: any[] }) {
 
-        const route_target = this.route(target)
-        const kite = this.find(route_target)
+        const kite = this.find(target)
 
         if (kite == null) {
-            throw new Error(`no such kite(${target.join(",")}) to listen ${event}(...)`)
+            throw new Error(`no such kite(${JSON.stringify(target)}) to listen ${event}(...)`)
         }
 
         let events = kite._listeners[event]
@@ -332,7 +325,7 @@ export class WorkerApplication extends BaseApplication {
         }
 
         for (const element of events) {
-            const source_target = [element.source]
+            const source_target = { address: element.address }
             const port = this.choose(source_target)
 
             port.postMessage({
@@ -392,6 +385,8 @@ export class WorkerApplication extends BaseApplication {
 
     async resolveMethod(kite: Kite, method_meta: MethodMeta, args: any[] = [], context: any = {}) {
 
+        this.resolveMiddlewares(kite, method_meta, context)
+
         const parameters = [];
 
         for (const one of method_meta.parameters) {
@@ -402,6 +397,10 @@ export class WorkerApplication extends BaseApplication {
         const result = await kite.value[method_meta.name](...parameters, ...args)
 
         return result
+    }
+
+    resolveMiddlewares(kite: Kite, method_meta: MethodMeta, context: any) {
+
     }
 
     resolveParameters(kite: Kite, method_meta: MethodMeta, context: any) {
@@ -474,7 +473,7 @@ export class WorkerApplication extends BaseApplication {
 
         const kite = this.createKite(target, options, undefined, context)
 
-        console.log(`create ${kite.address}=${kite.name}(${kite.id ? kite.id : ''})`)
+        console.log(`worker[${this.index}] create ${kite.address}=${kite.name}(${kite.id ? kite.id : ''})`)
 
         if (target.id == null)       //global
         {
@@ -630,7 +629,7 @@ export class WorkerApplication extends BaseApplication {
                     case "OnDisconnect":
                         onDisconnect = method
                         break
-                    case "Message":
+                    case "OnMessage":
                         messages.push({ name: tag.value.name as string, method })
                         break
                     default:
@@ -757,12 +756,22 @@ export class WorkerApplication extends BaseApplication {
         }
     }
 
-    choose(target: RouteParams) {
+    choose(target: Target) {
 
-        let route_target = this.route(target)
-        let hash = this.route_hash(route_target)
+        let index = 0
 
-        let index = hash % this.config.threads
+        if (typeof target.id == "number") {
+            index = target.id % this.config.threads
+        }
+        else if (typeof target.id == "string") {
+            index = hash(target.id) % this.config.threads
+        }
+        else if (target.name) {
+            index = hash(target.name) % this.config.threads
+        }
+        else if (target.address) {
+            index = target.address >> 24
+        }
 
         return this.workers[index]
     }
@@ -801,28 +810,9 @@ export class WorkerApplication extends BaseApplication {
         return target
     }
 
-    route_hash(target: Target) {
-
-        let target_hash = 0
-        if (typeof target.id == "number") {
-            target_hash = target.id
-        }
-        else if (typeof target.id == "string") {
-            target_hash = hash(target.id)
-        }
-        else if (target.name) {
-            target_hash = hash(target.name)
-        }
-        else if (target.address) {
-            target_hash = target.address
-        }
-
-        return target_hash
-    }
-
-    route_action(kite: Kite, target: RouteParams, method: string, args: any[]) {
+    route_action(kite: Kite, target: Target, method: string, args: any[]) {
         let meta = kite.meta
-        let route_name = typeof target[0] == "string" ? target[0] : ''
+        let route_name = target.name ?? ''
 
         let router = meta.routers[route_name]
         let action = router?.action
@@ -877,16 +867,15 @@ export class WorkerApplication extends BaseApplication {
         const caches: any = {}
 
         const that = this
-
-        return (...target: RouteParams) => {
+        const router = (...route_params: RouteParams) => {
             let current = caches
 
-            if (target.length == 0) {
-                target = [kite.root.address]
+            if (route_params.length == 0) {
+                route_params = [kite.root.address]
             }
 
-            for (let i = 0; i < target.length - 1; ++i) {
-                let key = target[i]
+            for (let i = 0; i < route_params.length - 1; ++i) {
+                let key = route_params[i]
                 let child = current[key]
 
                 if (child == null) {
@@ -896,16 +885,17 @@ export class WorkerApplication extends BaseApplication {
                 current = child
             }
 
-            let last = target[target.length - 1]
+            let last = route_params[route_params.length - 1]
             let existed = current[last]
             if (existed) {
                 return existed
             }
 
+            const target = that.route(route_params)
             const port = that.choose(target)
 
-            const remote: RemoteTarget = current[last] = {
-                target,
+            const remote: RemoteAgent = current[last] = {
+                target: target,
                 on(event: string, method: string) {
                     port.postMessage({
                         type: "listen",
@@ -1000,6 +990,10 @@ export class WorkerApplication extends BaseApplication {
 
             return remote
         }
+
+        router.self = router()
+
+        return router
     }
 
 }

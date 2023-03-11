@@ -21,7 +21,7 @@ export interface PropertyMeta {
     name: string | symbol;
 }
 
-export type RouterAction = (remote: any[], method: string, args: any[]) => { method: string, args: any[] }
+export type RouterAction = (remote: any, method: string, args: any[]) => { method: string, args: any[] }
 
 export interface RouterMeta {
     name: string,

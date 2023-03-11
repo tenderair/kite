@@ -217,7 +217,7 @@ export class MasterApplication extends BaseApplication {
             index = hash(target.name) % this.config.threads
         }
         else if (target.address) {
-            index = target.address % this.config.threads
+            index = target.address >> 24
         }
 
         return this.workers[index]
@@ -249,7 +249,6 @@ export class MasterApplication extends BaseApplication {
             rpc.resolve(result)
         }
         else if (error) {
-            console.log("recv error resp")
             rpc.reject(error)
         }
     }

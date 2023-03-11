@@ -1,3 +1,5 @@
 {
-    "svn.ignoreMissingSvnWarning": true
+    "svn.ignoreMissingSvnWarning": true,
+    "vetur.format.options.tabSize": 4,
+    "editor.detectIndentation": false
 }

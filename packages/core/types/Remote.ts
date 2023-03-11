@@ -66,8 +66,14 @@ export type EventListener = (event: string, local_method: string) => void;
 export type EventRemover = (event: string, local_method: string) => void;
 export type RemoteCreator = (options?: any) => Promise<number>;
 
-export interface RemoteTarget {
-    target: RouteParams;
+export interface Target {
+    name?: string,
+    id?: string | number,
+    address?: number
+}
+
+export interface RemoteAgent {
+    target: Target;
     send: RemoteSender;
     call: RemoteCaller;
     on: EventListener;
@@ -77,12 +83,12 @@ export interface RemoteTarget {
     emit: (event: string, ...args: any[]) => void;
 }
 
-export type Remote = (...args: any[]) => RemoteTarget
+export type RemoteSeeker = (...args: any[]) => RemoteAgent
 
-export interface Target {
-    name?: string,
-    id?: string | number,
-    address?: number
+export interface Remote extends RemoteSeeker {
+    self: RemoteAgent;
 }
+
+
 
 
