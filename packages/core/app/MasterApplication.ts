@@ -4,6 +4,7 @@ import { Worker, SHARE_ENV, MessageChannel } from 'worker_threads';
 import { cpus } from 'os';
 import { Target } from "../types/Remote";
 import { hash } from "../utils/hash";
+import { Message } from "../types/Message";
 
 export class MasterApplication extends BaseApplication {
 
@@ -56,12 +57,12 @@ export class MasterApplication extends BaseApplication {
 
                 first.postMessage({
                     type: "connect",
-                    body: { index: j, port: channel.port1 }
+                    index: j, port: channel.port1
                 }, [channel.port1])
 
                 second.postMessage({
                     type: "connect",
-                    body: { index: i, port: channel.port2 }
+                    index: i, port: channel.port2
                 }, [channel.port2])
             }
         }
@@ -144,10 +145,8 @@ export class MasterApplication extends BaseApplication {
 
         return this.call(worker, {
             type: "create",
-            body: {
-                target,
-                options,
-            }
+            target,
+            options,
         })
     }
 
@@ -155,10 +154,8 @@ export class MasterApplication extends BaseApplication {
         let worker = this.choose(target) as Worker
         return this.call(worker, {
             type: "createSync",
-            body: {
-                target,
-                options,
-            }
+            target,
+            options,
         })
     }
 
@@ -166,11 +163,9 @@ export class MasterApplication extends BaseApplication {
         let worker = this.choose(target) as Worker
         return this.call(worker, {
             type: "createControllerSync",
-            body: {
-                target,
-                options,
-                driver
-            }
+            target,
+            options,
+            driver
         })
     }
 
@@ -181,21 +176,19 @@ export class MasterApplication extends BaseApplication {
 
         return this.call(worker, {
             type: "createController",
-            body: {
-                target,
-                options,
-                driver
-            }
+            target,
+            options,
+            driver
         })
     }
 
-    dispatch(from: Worker, { session, type, body }: { session: number, type: string, body: any }) {
+    dispatch(from: Worker, message: Message) {
         // console.log(`master:dispatch`, type, session ? session : '', body)
 
         try {
-            switch (type) {
+            switch (message.type) {
                 case "resp":
-                    this.onResp(from, session, body)
+                    this.onResp(from, message)
                     break
             }
         }
@@ -217,7 +210,7 @@ export class MasterApplication extends BaseApplication {
             index = hash(target.name) % this.config.threads
         }
         else if (target.address) {
-            index = target.address >> 24
+            index = (target.address >> 24) % this.config.threads
         }
 
         return this.workers[index]
@@ -236,7 +229,11 @@ export class MasterApplication extends BaseApplication {
             }
         })
     }
-    onResp(from: Worker, session: number, { result, error }: { result?: any, error?: Error }) {
+    onResp(from: Worker, message: Message) {
+
+        const { session } = message
+        const result: any = message.result
+        const error: Error | undefined = message.error
 
         let rpc = this.rpcs[session]
         if (rpc == null) {

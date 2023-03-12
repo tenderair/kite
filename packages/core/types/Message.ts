@@ -1,8 +1,10 @@
 import { Target } from "./Remote";
 
 export interface Message {
-    session?: number,
+    session: number,
     type: string,
     source: Target,
-    body: any
+    target?: Target,
+    route?: any[],
+    [key: string]: any,
 }

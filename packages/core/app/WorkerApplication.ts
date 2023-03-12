@@ -21,7 +21,7 @@ interface IndexMessagePort extends MessagePort {
 export class WorkerApplication extends BaseApplication {
 
     index = workerData.index as number
-    address_helper = workerData.index << 24
+    address_helper = (workerData.index << 24) + 100000
 
     workers: Record<number, IndexMessagePort> = {};     //[index] = IndexMessagePort
     local_kites = new Map<string, IDKites>();           //[name] = IDKites
@@ -54,48 +54,45 @@ export class WorkerApplication extends BaseApplication {
         })
     }
 
-    async dispatch(from: MessagePort,
-        { session, type, source, body }: Message) {
-
-        // console.log(`worker[${this.index}]:dispatch`, type, session ? session : '', body)
+    async dispatch(from: MessagePort, message: Message) {
 
         let result = null
         let error = null
 
         try {
-            switch (type) {
+            switch (message.type) {
                 case "connect":
-                    result = await this.onConnect(from, body)
+                    result = await this.onConnect(from, message)
                     break
                 case "create":
-                    result = await this.onCreate(from, body)
+                    result = await this.onCreate(from, message)
                     break
                 case "createSync":
-                    result = await this.onCreateSync(from, body)
+                    result = await this.onCreateSync(from, message)
                     break
                 case "createController":
-                    result = await this.onCreateController(from, body)
+                    result = await this.onCreateController(from, message)
                     break
                 case "destroy":
-                    this.onDestroy(from, body)
+                    this.onDestroy(from, message)
                     break
                 case "action":
-                    result = await this.onAction(from, source, body)
+                    result = await this.onAction(from, message)
                     break
                 case "resp":
-                    this.onResp(from, session as number, body)
+                    this.onResp(from, message)
                     break
                 case "regist":
-                    this.onRegist(from, body)
+                    this.onRegist(from, message)
                     break
                 case "Listen":
-                    this.onListen(from, source, body)
+                    this.onListen(from, message)
                     break
                 case "Remove":
-                    this.onRemove(from, source, body)
+                    this.onRemove(from, message)
                     break
                 case "Emit":
-                    this.onEmit(from, source, body)
+                    this.onEmit(from, message)
                     break
                 default:
                     break
@@ -105,7 +102,7 @@ export class WorkerApplication extends BaseApplication {
             error = err
         }
 
-        if (session == null || type == "resp") {
+        if (message.session == null || message.type == "resp") {
             return
         }
 
@@ -113,35 +110,36 @@ export class WorkerApplication extends BaseApplication {
 
         from.postMessage({
             type: "resp",
-            session,
-            body: {
-                result,
-                error
-            }
+            session: message.session,
+            result,
+            error
         })
     }
 
-    onConnect(from: MessagePort, { index, port }: { index: number, port: MessagePort }) {
+    onConnect(from: MessagePort, message: Message) {
 
-        let index_port = port as IndexMessagePort
+        const index = message.index as number
+        const port = message.port as IndexMessagePort
 
-        index_port.index = index
+        port.index = index
 
-        this.workers[index] = index_port
+        this.workers[index] = port
 
-        index_port.on('message', (message) => {
-            return this.dispatch(index_port, message)
+        port.on('message', (message) => {
+            return this.dispatch(port, message)
         })
 
         console.log(`worker(${this.index}) onConnect worker(${index})`)
     }
 
-    onCreate(from: MessagePort, { target, options }: { target: Target, options: any }): number {
+    onCreate(from: MessagePort, message: Message): number {
 
-        const kite = this.createRootKite(target, options, {
-            ...target,
-            address: ++this.address_helper,
-        })
+        const target = message.target as Target
+        const options = message.options as any
+
+        target.address = target.address || ++this.address_helper
+
+        const kite = this.createRootKite(target, options, {})
 
         setImmediate(() => {
             this.startKite(kite)
@@ -150,21 +148,29 @@ export class WorkerApplication extends BaseApplication {
         return kite.address
     }
 
-    async onCreateSync(from: MessagePort, { target, options }: { target: Target, options: any }): Promise<number> {
+    async onCreateSync(from: MessagePort, message: Message): Promise<number> {
 
-        const kite = this.createRootKite(target, options, {
-            ...target,
-            address: ++this.address_helper,
-        })
+        const target = message.target as Target
+        const options = message.options as any
+
+        target.address = target.address || ++this.address_helper
+
+        const kite = this.createRootKite(target, options, {})
 
         await this.startKite(kite)
 
         return kite.address
     }
 
-    async onCreateController(from: MessagePort, { target, options, driver }: { target: Target, options: any, driver: any }) {
+    async onCreateController(from: MessagePort, message: Message) {
 
-        const kite = this.createController(target, options, driver)
+        const target = message.target as Target
+        const options: any = message.options
+        const driver: any = message.driver
+
+        target.address = target.address || ++this.address_helper
+
+        const kite = this.createController(target, options, driver, {})
 
         setImmediate(() => {
             this.startKite(kite)
@@ -173,8 +179,9 @@ export class WorkerApplication extends BaseApplication {
         return kite.address
     }
 
-    async onDestroy(from: MessagePort, { target, source }: { target: Target, source: Target }) {
+    async onDestroy(from: MessagePort, message: Message) {
 
+        const target = message.target as Target
         const kite = this.find(target)
         if (kite == null) {
             return
@@ -204,14 +211,20 @@ export class WorkerApplication extends BaseApplication {
      * @param param2 
      * @returns 
      */
-    async onAction(from: MessagePort, source: Target, { target, method, args }: { target: Target, method: string, args: any[] }) {
+    async onAction(from: MessagePort, message: Message) {
+
+        const source = message.source
+        const target = message.target as Target
+        const method = message.method as string
+        const route = message.route as any[]
+        const args = message.args as any[]
 
         let kite = this.find(target)
         if (kite == null) {
             throw new Error(`no such kite(${JSON.stringify(target)}) to invoke ${method}(...)`)
         }
 
-        let { method: action_method, args: action_args } = this.route_action(kite, target, method, args)
+        let { method: action_method, args: action_args } = this.route_action(kite, route, method, args)
 
         const current = this.findMethod(kite, action_method)
         if (current == null) {
@@ -252,7 +265,11 @@ export class WorkerApplication extends BaseApplication {
         }
     }
 
-    onResp(from: MessagePort, session: number, { result, error }: { result?: any, error?: Error }) {
+    onResp(from: MessagePort, message: Message) {
+
+        const session = message.session as number
+        const result = message.result as any
+        const error = message.error as Error
 
         let rpc = this.rpcs[session]
         if (rpc == null) {
@@ -269,11 +286,19 @@ export class WorkerApplication extends BaseApplication {
         }
     }
 
-    onRegist(from: MessagePort, { name, address }: { name: string, address: number }) {
-        this.global_kites.set(name, address)
+    onRegist(from: MessagePort, message: Message) {
+
+        const target = message.target as Target
+
+        this.global_kites.set(target.name as string, target.address as number)
     }
 
-    onListen(from: MessagePort, source: Target, { target, event, method }: { target: Target, event: string, method: string }) {
+    onListen(from: MessagePort, message: Message) {
+
+        const source = message.source
+        const target = message.target as Target
+        const event = message.event as string
+        const method = message.method as string
 
         const kite = this.find(target)
         const address = source.address
@@ -290,7 +315,13 @@ export class WorkerApplication extends BaseApplication {
         events.push({ address: address as number, method })
     }
 
-    onRemove(from: MessagePort, source: Target, { target, event, method }: { target: Target, event: string, method: string }) {
+    onRemove(from: MessagePort, message: Message) {
+
+        const source = message.source
+        const target = message.target as Target
+
+        const event = message.event as string
+        const method = message.method as string
 
         const kite = this.find(target)
         const address = source.address
@@ -311,7 +342,12 @@ export class WorkerApplication extends BaseApplication {
         events.splice(index, 1)
     }
 
-    onEmit(from: MessagePort, source: Target, { target, event, args }: { target: Target, event: string, args: any[] }) {
+    onEmit(from: MessagePort, message: Message) {
+
+        const source: Target = message.source
+        const target = message.target as Target
+        const event = message.event as string
+        const args = message.args as any[]
 
         const kite = this.find(target)
 
@@ -331,16 +367,14 @@ export class WorkerApplication extends BaseApplication {
             port.postMessage({
                 type: "action",
                 source,
-                body: {
-                    target,
-                    method: element.method,
-                    args,
-                }
+                target,
+                method: element.method,
+                args,
             })
         }
     }
 
-    async resolveProperties(kite: Kite, context?: any) {
+    async resolveProperties(kite: Kite, context: any) {
 
         const meta = kite.meta
         const value = kite.value
@@ -351,7 +385,7 @@ export class WorkerApplication extends BaseApplication {
         }
     }
 
-    resolveProperty(kite: Kite, meta: PropertyMeta, context?: any) {
+    resolveProperty(kite: Kite, meta: PropertyMeta, context: any) {
         for (const tag of meta.tags) {
             const tag_value = tag.value
             switch (tag.type) {
@@ -359,7 +393,6 @@ export class WorkerApplication extends BaseApplication {
                     return kite.root.address
                 case "ID":
                     return kite.root.id
-                    break
                 case "Options":
                     {
                         if (tag_value) {
@@ -369,11 +402,10 @@ export class WorkerApplication extends BaseApplication {
                             return kite.options
                         }
                     }
-                    break
                 case "RemoteRouter":
                     return this.make_remote(kite)
                 case "Server":
-                    return kite.root.server
+                    return context.server
                 case "Input":
                     return kite.options[tag_value]
                 case "Reference":
@@ -437,7 +469,7 @@ export class WorkerApplication extends BaseApplication {
     resolveResult(kite: Kite, method_meta: MethodMeta, result?: any, context?: any) {
         for (const tag of method_meta.results) {
             switch (tag.type) {
-                case "Message":
+                case "OnMessage":
                     {
                         let option = tag.value as any
                         if (option.ack) {
@@ -481,10 +513,7 @@ export class WorkerApplication extends BaseApplication {
 
             this.broad({
                 type: "regist",
-                body: {
-                    name: target.name,
-                    address: kite.address,
-                }
+                target,
             })
         }
         else {
@@ -516,7 +545,7 @@ export class WorkerApplication extends BaseApplication {
         kite.parent = parent
         kite.name = target.name as string
         kite.id = target.id
-        kite.address = context.address
+        kite.address = target.address as number
         kite.options = options
         kite.server = context.server
         kite.descriptor = this.name_classes.get(kite.name) as Constructable<unknown>
@@ -526,8 +555,6 @@ export class WorkerApplication extends BaseApplication {
         }
 
         kite.meta = (Reflect as any).getMetadata("class", kite.descriptor) as KiteMetadata;
-
-        context.root = kite.root
 
         this.createKiteValue(kite, context)
         this.createKiteChildren(kite, context)
@@ -597,13 +624,10 @@ export class WorkerApplication extends BaseApplication {
         }
     }
 
-    createController(target: Target, options?: any, driver?: any): Kite {
+    createController(target: Target, options: any, driver: any, context: any): Kite {
 
-        const context = {
-            ...target,
-            address: ++this.address_helper,
-            server: new Server(),
-        }
+        const server = context.server = new Server(driver)
+
         const kite = this.createRootKite(target, options, context)
 
         const meta = kite.meta as KiteMetadata
@@ -613,7 +637,6 @@ export class WorkerApplication extends BaseApplication {
         }
 
         const port = driver?.port || meta.value || 8080
-        const server = kite.server = context.server
 
         let onConnected: MethodMeta
         let onDisconnect: MethodMeta
@@ -770,7 +793,7 @@ export class WorkerApplication extends BaseApplication {
             index = hash(target.name) % this.config.threads
         }
         else if (target.address) {
-            index = target.address >> 24
+            index = (target.address >> 24) % this.config.threads
         }
 
         return this.workers[index]
@@ -810,15 +833,15 @@ export class WorkerApplication extends BaseApplication {
         return target
     }
 
-    route_action(kite: Kite, target: Target, method: string, args: any[]) {
+    route_action(kite: Kite, route: RouteParams, method: string, args: any[]) {
         let meta = kite.meta
-        let route_name = target.name ?? ''
+        let route_name = route[0] ?? ""
 
         let router = meta.routers[route_name]
         let action = router?.action
 
         if (action) {
-            return action.call(kite.value, target, method, args)
+            return action.call(kite.value, route, method, args)
         }
 
         return {
@@ -867,15 +890,15 @@ export class WorkerApplication extends BaseApplication {
         const caches: any = {}
 
         const that = this
-        const router = (...route_params: RouteParams) => {
+        const router = (...route: RouteParams) => {
             let current = caches
 
-            if (route_params.length == 0) {
-                route_params = [kite.root.address]
+            if (route.length == 0) {
+                route = [kite.root.address]
             }
 
-            for (let i = 0; i < route_params.length - 1; ++i) {
-                let key = route_params[i]
+            for (let i = 0; i < route.length - 1; ++i) {
+                let key = route[i]
                 let child = current[key]
 
                 if (child == null) {
@@ -885,13 +908,13 @@ export class WorkerApplication extends BaseApplication {
                 current = child
             }
 
-            let last = route_params[route_params.length - 1]
+            let last = route[route.length - 1]
             let existed = current[last]
             if (existed) {
                 return existed
             }
 
-            const target = that.route(route_params)
+            const target = that.route(route)
             const port = that.choose(target)
 
             const remote: RemoteAgent = current[last] = {
@@ -900,24 +923,20 @@ export class WorkerApplication extends BaseApplication {
                     port.postMessage({
                         type: "listen",
                         source,
-                        body: {
-                            source,
-                            target,
-                            event,
-                            method,
-                        }
+                        route,
+                        target,
+                        event,
+                        method,
                     })
                 },
                 off(event: string, method: string) {
                     port.postMessage({
                         type: "remove",
                         source,
-                        body: {
-                            source,
-                            target,
-                            event,
-                            method,
-                        }
+                        route,
+                        target,
+                        event,
+                        method,
                     })
                 },
                 create(options?: any) {
@@ -927,10 +946,10 @@ export class WorkerApplication extends BaseApplication {
                         type: "create",
                         session,
                         source,
-                        body: {
-                            target,
-                            options,
-                        }
+                        route,
+                        target,
+                        options,
+
                     })
 
                     return new Promise<number>((resolve, reject) => {
@@ -941,20 +960,17 @@ export class WorkerApplication extends BaseApplication {
                     port.postMessage({
                         type: "destroy",
                         source,
-                        body: {
-                            target,
-                        }
+                        target,
                     })
                 },
                 send(method: string, ...args: any[]) {
                     port.postMessage({
                         type: "action",
                         source,
-                        body: {
-                            target,
-                            method,
-                            args,
-                        }
+                        route,
+                        target,
+                        method,
+                        args,
                     })
                 },
                 call(method: string, ...args: any[]) {
@@ -964,11 +980,10 @@ export class WorkerApplication extends BaseApplication {
                         type: "action",
                         session,
                         source,
-                        body: {
-                            target,
-                            method,
-                            args,
-                        }
+                        route,
+                        target,
+                        method,
+                        args,
                     })
 
                     return new Promise((resolve, reject) => {
@@ -979,11 +994,10 @@ export class WorkerApplication extends BaseApplication {
                     port.postMessage({
                         type: "emit",
                         source,
-                        body: {
-                            target,
-                            event,
-                            args,
-                        }
+                        route,
+                        target,
+                        event,
+                        args,
                     })
                 }
             }

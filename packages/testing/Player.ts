@@ -50,6 +50,17 @@ export class Player {
         console.log("this is on start", this.address, this.id)
     }
 
+    onCreate() {
+
+    }
+
+    beforeAttach() {
+
+    }
+    onAttached() {
+
+    }
+
     @Interval("show_debug", 2000)
     async print() {
 
@@ -70,11 +81,6 @@ export class Player {
         this.remote("player", pid).emit("login")
 
         this.remote.self.destroy()
-
-        // this.remote().emit()
-        // this.remote("player",pid).on("logout","on_logout")
-        // this.remote().on("logout","on_logout")                   //监听自己的信息
-        // this.remote().on()
     }
 
     on_logout() { }
@@ -107,9 +113,9 @@ Message 中间件，会对单个 namespace 下的 message 生效
     route(name) {
         return { name: "gate" }
     },
-    action(remote: Target, method: string, args: any[]) {
+    action(remote: any[], method: string, args: any[]) {
 
-        let { id: pid } = remote
+        let pid = remote[1]
 
         return {
             method: "send_client",

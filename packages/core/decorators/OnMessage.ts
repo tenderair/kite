@@ -12,9 +12,6 @@ export function OnMessage(name?: string, options?: {
         let meta = { type: "OnMessage", value }
 
         method.tags.push(meta)
-
-        if (options?.ack) {
-            method.results.push(meta)
-        }
+        method.results.push(meta)
     }
 }
